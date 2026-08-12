@@ -1,0 +1,6 @@
+venv*
+.env*
+_pycache_
+nova_memory.db
+nova_history.db
+.txt*
