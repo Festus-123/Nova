@@ -8,3 +8,5 @@ pydantic
 ddgs
 uvicorn
 fastapi
+pytesseract
+pillow

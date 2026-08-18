@@ -1,3 +1,4 @@
+import logging
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
@@ -7,14 +8,21 @@ from tools import (
     web_search,
     save_report,
     read_report,
+    ocr_image_scan,
+    save_user_memory,
+    search_user_memory,
+    list_user_memories,
+    delete_user_memory,
 )
 
 from memory import (
     initialize_memory,
     get_memories,
+    format_memories_for_prompt,
     get_recent_actions,
     save_action,
     process_memory,
+    set_current_user_id,
 )
 
 from history import (
@@ -23,29 +31,43 @@ from history import (
     get_recent_messages,
 )
 
+logger = logging.getLogger("nova_main")
 
+# ============================================================
 # ENVIRONMENT
+# ============================================================
 
 load_dotenv()
 
 
+# ============================================================
 # INITIALIZE DATABASES
+# ============================================================
 
 initialize_memory()
 initialize_history()
 
 
+# ============================================================
 # TOOLS
+# ============================================================
 
 tools = [
     wikipedia_search,
     web_search,
     save_report,
     read_report,
+    ocr_image_scan,
+    save_user_memory,
+    search_user_memory,
+    list_user_memories,
+    delete_user_memory,
 ]
 
 
+# ============================================================
 # LLM
+# ============================================================
 
 llm = ChatOpenAI(
     model="gpt-5.4-nano",
@@ -54,7 +76,9 @@ llm = ChatOpenAI(
 )
 
 
+# ============================================================
 # AGENT
+# ============================================================
 
 agent = create_agent(
     model=llm,
@@ -62,221 +86,126 @@ agent = create_agent(
 )
 
 
+# ============================================================
 # BUILD LONG-TERM MEMORY CONTEXT
+# ============================================================
 
-def build_memory_context(user_id: str):
+def build_memory_context(user_id: str) -> str:
     """
-    Retrieve only the information Nova should know
-    from long-term memory.
-
-    Conversation history is handled separately by history.py.
+    Retrieve and format long-term memories for this user
+    so they persist across every conversation session.
     """
-
     memories = get_memories(
         user_id=user_id,
-        minimum_importance=6,
-        limit=20,
+        minimum_importance=1,
+        limit=50,
     )
 
     actions = get_recent_actions(
         user_id=user_id,
-        limit=10,
+        limit=5,
     )
 
-    # --------------------------------------------------------
-    # Long-term memories
-    # --------------------------------------------------------
-
-    if memories:
-
-        memory_text = "\n".join(
-            (
-                f"- [{memory['category']}] "
-                f"{memory['key']}: "
-                f"{memory['value']} "
-                f"(importance: {memory['importance']}/10)"
-            )
-            for memory in memories
-        )
-
-    else:
-
-        memory_text = "No relevant long-term memories."
-
-
-    # --------------------------------------------------------
-    # Recent agent actions
-    # --------------------------------------------------------
+    formatted_memories = format_memories_for_prompt(memories)
 
     if actions:
-
         action_text = "\n".join(
-            (
-                f"- {action['action']}: "
-                f"{action['result']}"
-            )
+            f"- {action['action']}: {action['result']}"
             for action in actions
         )
-
     else:
+        action_text = "None."
 
-        action_text = "No recent actions."
-
-
-    # --------------------------------------------------------
-    # Final context
-    # --------------------------------------------------------
-
-    return f"""
-LONG-TERM MEMORY:
-
-{memory_text}
-
+    return f"""PERSISTENT USER MEMORY (Available across all conversations):
+{formatted_memories}
 
 RECENT AGENT ACTIONS:
-
-{action_text}
-""".strip()
+{action_text}"""
 
 
+# ============================================================
 # SYSTEM PROMPT
+# ============================================================
 
-def build_system_prompt(memory_context: str):
+def build_system_prompt(memory_context: str) -> str:
+    return f"""You are Nova Flash 1, an intelligent and reliable AI research assistant.
 
-    return f"""
-You are Nova Flash 1, a reliable AI research assistant.
+CORE CAPABILITIES & RULES:
 
-Your job is to help the user research topics, find information,
-use available tools, and provide clear and useful answers.
+1. PERSISTENT LONG-TERM MEMORY:
+   - You have persistent memory about this user that remains intact ACROSS DIFFERENT CONVERSATIONS.
+   - When a new conversation starts, you ALREADY know the user's name, preferences, project details, and past instructions if they are listed in the PERSISTENT USER MEMORY section below.
+   - If the user asks "What is my name?", "Who am I?", "Do you remember me?", or asks about their preferences, check the PERSISTENT USER MEMORY section and answer accurately and directly.
+   - If the user provides personal facts (e.g. "My name is Festus", "I prefer Python", "I'm working on Nova") or explicitly asks you to remember/save something, use the `save_user_memory` tool or confirm it is saved.
+   - If the user asks to forget or delete saved info, use the `delete_user_memory` tool.
+   - Address the user naturally by name if their name is known from memory.
 
-CORE RULES:
+2. RESEARCH & TOOLS:
+   - Use `web_search` or `wikipedia_search` when fresh information or factual verification is needed.
+   - Use `save_report` / `read_report` for saving long markdown reports to files.
+   - Use `ocr_image_scan` to read text or extract target data from images.
+   - Never fabricate tool results or claims of tool usage.
 
-1. Be accurate and honest.
+3. ACCURACY & CONVERSATION STYLE:
+   - Be clear, structured, and helpful.
+   - Maintain context across conversation history for the current session, while leveraging long-term memory for cross-session continuity.
 
-2. Use tools when the user's request requires them.
-
-3. Never claim that you used a tool if you did not actually use it.
-
-4. If a tool returns no useful information, say so honestly.
-
-5. Use long-term memory only when it is relevant to the
-   current request.
-
-6. Do not mention the memory system to the user.
-
-7. Do not repeat stored memories unnecessarily.
-
-8. Do not assume that every previous interaction is relevant.
-
-9. The user's current request always takes priority.
-
-10. Conversation history provides context for the current
-    conversation. Long-term memory provides persistent
-    information about the user.
-
-11. Keep your responses natural and conversational.
-
-12. When performing research, structure the answer clearly
-    using headings, bullet points, paragraphs, and lists where
-    appropriate.
-
-13. Do not invent sources, tool results, or facts.
-
-AVAILABLE LONG-TERM CONTEXT:
-
+============================================================
+CURRENT USER'S PERSISTENT CONTEXT:
+============================================================
 {memory_context}
-
-Use this context silently and only when it helps answer
-the user's current request.
 """.strip()
 
 
-# RUN NOVA
+# ============================================================
+# RUN NOVA EXECUTION PIPELINE
+# ============================================================
 
 def run_research(
     query: str,
     user_id: str = "default",
     session_id: str = "default",
-):
+) -> str:
     """
     Main execution pipeline for Nova Flash 1.
 
-    Flow:
-
-        User request
-              ↓
-        Save to history
-              ↓
-        Retrieve conversation history
-              ↓
-        Retrieve long-term memory
-              ↓
-        Build Nova context
-              ↓
-        Run agent
-              ↓
-        Get response
-              ↓
-        Save response to history
-              ↓
-        Record agent action
-              ↓
-        Memory Gate evaluates interaction
-              ↓
-        Return response
+    Ensures seamless memory persistence across sessions.
     """
+    clean_user_id = (user_id or "default").strip() or "default"
+    clean_session_id = (session_id or "default").strip() or "default"
 
-    # 1. SAVE USER MESSAGE
+    # Set context variable for tools
+    set_current_user_id(clean_user_id)
 
+    # 1. SAVE USER MESSAGE TO HISTORY
     save_message(
-        user_id=user_id,
-        session_id=session_id,
+        user_id=clean_user_id,
+        session_id=clean_session_id,
         role="user",
         content=query,
     )
 
-
-    # 2. GET CONVERSATION HISTORY
-
+    # 2. GET CONVERSATION HISTORY (Current session)
     history = get_recent_messages(
-        user_id=user_id,
-        session_id=session_id,
+        user_id=clean_user_id,
+        session_id=clean_session_id,
         limit=20,
     )
 
-
-    # 3. GET LONG-TERM MEMORY
-
+    # 3. GET PERSISTENT LONG-TERM MEMORY (Across all sessions)
     memory_context = build_memory_context(
-        user_id=user_id,
+        user_id=clean_user_id,
     )
 
-
-    # 4. BUILD NOVA'S MESSAGE CONTEXT
-
-    messages = []
-
-
-    # --------------------------------------------------------
-    # System message
-    # --------------------------------------------------------
-
-    messages.append(
+    # 4. BUILD MESSAGE CONTEXT
+    messages = [
         {
             "role": "system",
-            "content": build_system_prompt(
-                memory_context
-            ),
+            "content": build_system_prompt(memory_context),
         }
-    )
-
-
-    # --------------------------------------------------------
-    # Previous conversation
-    # --------------------------------------------------------
+    ]
 
     for message in history:
-
         messages.append(
             {
                 "role": message["role"],
@@ -284,52 +213,38 @@ def run_research(
             }
         )
 
-
     # 5. RUN AGENT
+    result = agent.invoke({"messages": messages})
 
-    result = agent.invoke(
-        {
-            "messages": messages
-        }
-    )
-
-
-    # 6. GET FINAL RESPONSE
-
+    # 6. EXTRACT RESPONSE
     last_message = result["messages"][-1]
-
     response = last_message.content
 
-
-    # 7. SAVE NOVA'S RESPONSE TO HISTORY
-
+    # 7. SAVE RESPONSE TO HISTORY
     save_message(
-        user_id=user_id,
-        session_id=session_id,
+        user_id=clean_user_id,
+        session_id=clean_session_id,
         role="assistant",
         content=response,
     )
 
-
-    # 8. RECORD AGENT ACTION
-
+    # 8. RECORD ACTION
     save_action(
-        user_id=user_id,
+        user_id=clean_user_id,
         action="agent_response",
         result=response,
     )
 
-
-    # 9. MEMORY GATE
-
-    process_memory(
-        llm=llm,
-        user_id=user_id,
-        user_message=query,
-        assistant_response=response,
-    )
-
+    # 9. BACKGROUND MEMORY EXTRACTION (Memory Gate)
+    try:
+        process_memory(
+            llm=llm,
+            user_id=clean_user_id,
+            user_message=query,
+            assistant_response=response,
+        )
+    except Exception as e:
+        logger.warning(f"Background memory extraction error: {e}")
 
     # 10. RETURN RESPONSE
-
     return response
