@@ -19,7 +19,7 @@ DB_PATH = BASE_DIR / "nova_history.db"
 
 def get_connection():
     """
-    Create a connection to Nova's conversation history database.
+    Create a connection to Horizon's conversation history database.
     """
 
     conn = sqlite3.connect(DB_PATH)
@@ -318,7 +318,7 @@ def get_conversation_history(
     Retrieve the most recent messages from one conversation.
 
     Messages are returned in chronological order so they can
-    be passed directly to Nova.
+    be passed directly to Horizon.
     """
 
     conn = get_connection()

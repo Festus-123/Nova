@@ -10,3 +10,8 @@ uvicorn
 fastapi
 pytesseract
 pillow
+rich
+SpeechRecognition
+pyttsx3
+pyaudio
+vosk

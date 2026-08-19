@@ -1,0 +1,91 @@
+You are an expert Python UI/UX engineer and AI audio specialist working on the "agent" codebase (`desktop_agent.py`).
+
+The user is happy with the core functionality and branding, but we need to refine two specific areas without breaking any existing memory, tool, or prompt logic:
+
+1. ENABLE NATIVE / NATURAL TEXT-TO-SPEECH (VOICE OUTPUT)
+2. UPGRADE TO A SUBTLE, ANIMATED "ANTIGRAVITY-STYLE" LIVE TERMINAL INTERFACE
+
+============================================================
+FEATURE 1: NATURAL VOICE OUTPUT (TTS)
+============================================================
+- Ensure Horizon synthesizes and speaks its responses out loud using text-to-speech.
+- Implementation requirement:
+  * Primary: Use `pyttsx3` or `edge-tts` (or `gTTS` with temporary audio play using `pygame` / `playsound`).
+  * Non-blocking or smooth playback so it doesn't freeze the terminal thread indefinitely.
+  * Filter out raw markdown symbols (like `**`, `###`, bullet points `*`) from the string BEFORE passing it to the TTS engine so it reads smooth, natural prose out loud.
+
+============================================================
+FEATURE 2: LIVE ANIMATED INDUSTRIAL UI (NO SCREEN CLUTTER)
+============================================================
+Refactor the terminal rendering in `desktop_agent.py` to use a dynamic live display (e.g., using `rich.live.Live` or `textual`) so the terminal window maintains ONE fixed, elegant screen rather than appending repeating header boxes down the console.
+
+UI Layout Specifications:
+1. FIXED HEADER PANEL:
+   - "✦ HORIZON DESKTOP // VOICE INTERFACE [ v1.2.0 ]"
+   - User ID, Session ID, and active status.
+
+2. SUBTLE ANIMATED STATUS CORE (THE "HORIZON HEART"):
+   - Instead of static text, create a live-updating ASCII animation frame depending on state:
+     * [STANDBY]: A gentle pulsating indicator: `[  •  ]` -> `[  ◦  ]` -> `[     ]`.
+     * [LISTENING]: A clean horizontal soundwave animation: `───░▒▓▒░───`.
+     * [THINKING]: An active orbital ring/spinner: `⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏`.
+     * [SPEAKING]: An active equalizer spectrum: ` ▃▅▇▆▅▃ `.
+   - Keep the animation extremely lightweight so it runs smoothly on modest PC specs without causing high CPU usage.
+
+3. TRAJECTORY & LOGS PANEL (SCROLLING):
+   - Displays real-time status logs with clean timestamps:
+     `> [02:00:21] Query received`
+     `> [02:00:32] Synthesizing audio response via TTS...`
+
+4. CLEAN RESPONSE BOX:
+   - Displays the printed version of Horizon's last answer cleanly in a sleek obsidian box.
+
+5. NON-BLOCKING INPUT COMMAND BAR:
+   - Maintain hotkey choices: `[V] Voice Query  [T] Text Query  [B] Executive Briefing  [M] Memory Vault  [Q] Exit`
+   - Input line stays pinned cleanly at the bottom.
+
+============================================================
+CONSTRAINTS
+============================================================
+- Do NOT alter `server.py`, `memory.py`, `history.py`, or `tools.py`.
+- Keep memory retrieval intact for user `Festus`.
+- Ensure all necessary python requirements are added to `requirements.txt`.
+
+Inspect `desktop_agent.py`, refactor the rendering loop using `rich.live.Live` (or lightweight UI framework), add the TTS module, and test the flow step-by-step.
+
+You are an expert Python audio/AI engineer updating `desktop_agent.py` in the "agen" codebase.
+
+We want to upgrade Horizon's interaction flow by adding hands-free, local Wake-Word Detection ("Hey Horizon") so the user doesn't have to manually press 'V' to initiate listening.
+
+============================================================
+FEATURE: LOCAL WAKE-WORD DETECTION
+============================================================
+1. ENGINE SELECTION:
+   - Primary: Use `vosk` with a small offline English model (e.g., `vosk-model-small-en-us`) for zero-cost, fully local, lightweight wake-word listening.
+   - Secondary / Alternative: Provide a fallback path using `pvporcupine` if Picovoice keys/keywords are present.
+
+2. LISTENING & WAKE WORKFLOW:
+   - Create a background listener thread/loop that continuously monitors the microphone input stream with low CPU overhead.
+   - Set the target wake phrase to detect: "hey horizon" (or "horizon").
+   - When the wake word is detected:
+     a. Trigger a quick audio chime/sound or update the UI Status Core immediately to `[WOKEN / LISTENING]`.
+     b. Automatically transition straight into capturing the user's voice query (the existing speech recognition pipeline).
+     c. Process the query through Horizon, speak the response via TTS, and automatically return to the background wake-word listener loop (`[STANDBY / LISTENING FOR 'HEY HORIZON']`).
+
+3. TUI INTEGRATION & HOTKEY OVERRIDES:
+   - Keep manual controls active! The user should still be able to press:
+     * [M] Mute/Unmute Wake-Word Listener (toggles background listening on/off)
+     * [T] Manual Text Query
+     * [Q] Exit
+   - Update the top Status Bar in the TUI to reflect wake-word state:
+     `🎙️ WAKE-WORD ACTIVE ("Hey Horizon")` vs `🔇 WAKE-WORD MUTED`
+
+============================================================
+TECHNICAL CONSTRAINTS & REQUIREMENTS
+============================================================
+- Do NOT break or modify `server.py`, `memory.py`, `history.py`, or existing tool definitions.
+- Ensure audio stream thread handling is clean to prevent sound device conflicts between the wake-word listener, speech recognizer, and TTS output player.
+- Automatically check for/download the small Vosk model if missing, or prompt clear instructions on terminal startup.
+- Add `vosk` and `pyaudio` (or `sounddevice`) to `requirements.txt`.
+
+Inspect `desktop_agent.py`, add the background wake-word thread logic cleanly, update the live TUI status panel, and test the flow step-by-step.

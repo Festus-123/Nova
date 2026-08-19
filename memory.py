@@ -8,7 +8,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 
-logger = logging.getLogger("nova_memory")
+logger = logging.getLogger("horizon_memory")
 
 # ============================================================
 # CONTEXT VARIABLE FOR CURRENT USER
@@ -721,7 +721,7 @@ def process_memory(
         user_id = "default"
     user_id = user_id.strip()
 
-    prompt = f"""You are Nova's Long-Term Memory Extractor.
+    prompt = f"""You are Horizon's Long-Term Memory Extractor.
 
 Your task is to analyze the conversation turn and decide if the user shared persistent facts that should be remembered ACROSS DIFFERENT CONVERSATIONS.
 

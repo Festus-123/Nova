@@ -20,8 +20,8 @@ from history import (
 
 
 app = FastAPI(
-    title="Nova Flash 1 API",
-    description="Research & Long-Term Memory Agent API for Nova Flash 1",
+    title="Horizon API",
+    description="Research & Long-Term Memory Agent API for Horizon",
     version="1.1.0",
 )
 
@@ -70,7 +70,7 @@ class MemoryCreateRequest(BaseModel):
 @app.get("/")
 def home():
     return {
-        "status": "Nova Flash 1 Agent Running",
+        "status": "Horizon Agent Running",
         "version": "1.1.0",
     }
 
@@ -114,10 +114,10 @@ def research(request: ResearchRequest):
         }
 
     except Exception as e:
-        print("Nova Error:", e)
+        print("Horizon Error:", e)
         raise HTTPException(
             status_code=500,
-            detail=f"Nova encountered an error: {str(e)}",
+            detail=f"Horizon encountered an error: {str(e)}",
         )
 
 
