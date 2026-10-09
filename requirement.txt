@@ -15,3 +15,6 @@ SpeechRecognition
 pyttsx3
 pyaudio
 vosk
+pypdf
+python-docx
+python-multipart

@@ -1,6 +1,8 @@
 import sqlite3
 import contextvars
 import logging
+import re
+import shutil
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -8,7 +10,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 
-logger = logging.getLogger("horizon_memory")
+logger = logging.getLogger("nebula_memory")
 
 # ============================================================
 # CONTEXT VARIABLE FOR CURRENT USER
@@ -29,11 +31,22 @@ def set_current_user_id(user_id: str) -> None:
 
 
 # ============================================================
-# DATABASE
+# DATABASE PATH & MIGRATION
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "nova_memory.db"
+LEGACY_DB_PATH = BASE_DIR / "nova_memory.db"
+DB_PATH = BASE_DIR / "nebula_memory.db"
+
+
+def _migrate_legacy_db_if_needed():
+    """Safely migrate legacy nova_memory.db to nebula_memory.db if needed."""
+    if not DB_PATH.exists() and LEGACY_DB_PATH.exists():
+        try:
+            shutil.copy2(LEGACY_DB_PATH, DB_PATH)
+            logger.info("Migrated legacy database from %s to %s", LEGACY_DB_PATH, DB_PATH)
+        except Exception as e:
+            logger.warning("Could not auto-copy legacy database: %s", e)
 
 
 # ============================================================
@@ -43,7 +56,7 @@ DB_PATH = BASE_DIR / "nova_memory.db"
 class MemoryItem(BaseModel):
     """
     Represents one piece of long-term information
-    that Nova may remember about a user.
+    that Nebula may remember about a user.
     """
 
     category: str = Field(
@@ -78,7 +91,7 @@ class MemoryItem(BaseModel):
 
 class MemoryDecision(BaseModel):
     """
-    Result produced by Nova's Memory Gate.
+    Result produced by Nebula's Memory Gate.
     """
 
     should_remember: bool = Field(
@@ -102,10 +115,19 @@ class MemoryDecision(BaseModel):
 
 def get_connection():
     """
-    Create a connection to Nova's long-term memory database.
+    Create a robust connection to Nebula's long-term memory database.
+    Enables WAL mode and busy timeouts for concurrent stability.
     """
-    conn = sqlite3.connect(DB_PATH)
+    _migrate_legacy_db_if_needed()
+    target_path = DB_PATH if DB_PATH.exists() else (LEGACY_DB_PATH if LEGACY_DB_PATH.exists() else DB_PATH)
+
+    conn = sqlite3.connect(target_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 5000")
+    except Exception:
+        pass
     return conn
 
 
@@ -115,8 +137,9 @@ def get_connection():
 
 def initialize_memory():
     """
-    Create Nova's long-term memory tables if they do not exist.
+    Create Nebula's long-term memory tables if they do not exist.
     """
+    _migrate_legacy_db_if_needed()
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -196,11 +219,14 @@ CATEGORY_MAP = {
     "preferences": "preference",
     "user_preferences": "preference",
     "pref": "preference",
+    "style": "preference",
     "projects": "project",
     "current_project": "project",
     "skills": "skill",
     "expertise": "skill",
+    "competency": "skill",
     "goals": "goal",
+    "aims": "goal",
     "instructions": "instruction",
     "system_instruction": "instruction",
     "rule": "instruction",
@@ -208,6 +234,7 @@ CATEGORY_MAP = {
     "contexts": "context",
     "note": "context",
     "notes": "context",
+    "background": "context",
 }
 
 KEY_MAP = {
@@ -217,20 +244,57 @@ KEY_MAP = {
     "first_name": "name",
     "preferred_name": "name",
     "username": "name",
+    "display_name": "name",
     "user_preference": "preference",
     "preferred_language": "favorite_language",
+    "coding_language": "favorite_language",
+    "programming_language": "favorite_language",
+    "fav_language": "favorite_language",
+    "active_project": "current_project",
+    "main_project": "current_project",
+    "primary_skill": "primary_skill",
+    "main_skill": "primary_skill",
 }
+
+# Synonymous keys to prune on update to prevent conflicting duplicates
+SYNONYM_CLEANUP = {
+    ("identity", "name"): [
+        ("identity", "user_name"), ("identity", "full_name"), ("identity", "fullname"),
+        ("identity", "preferred_name"), ("preference", "name"), ("user_preferences", "name"),
+    ],
+    ("preference", "favorite_language"): [
+        ("preference", "coding_language"), ("preference", "preferred_language"),
+        ("preference", "programming_language"), ("skill", "primary_language"),
+    ],
+    ("project", "current_project"): [
+        ("project", "active_project"), ("project", "main_project"),
+    ],
+}
+
+SECRET_PATTERNS = [
+    re.compile(r"sk-[a-zA-Z0-9_\-]{20,}", re.IGNORECASE),
+    re.compile(r"(?:api[_-]?key|secret[_-]?key|access[_-]?token|password|auth[_-]?token)[\s:=]+['\"]?([a-zA-Z0-9_\-\.]{8,})", re.IGNORECASE),
+    re.compile(r"bearer\s+[a-zA-Z0-9_\-\.]{20,}", re.IGNORECASE),
+]
+
+
+def contains_secret(text: str) -> bool:
+    """Detect presence of API keys, tokens, or passwords."""
+    for pattern in SECRET_PATTERNS:
+        if pattern.search(text):
+            return True
+    return False
 
 
 def normalize_category(category: str) -> str:
     """Map categories to canonical names."""
-    clean = category.strip().lower()
+    clean = (category or "context").strip().lower()
     return CATEGORY_MAP.get(clean, clean)
 
 
 def normalize_key(category: str, key: str) -> str:
     """Map keys to canonical names based on category."""
-    clean_key = key.strip().lower().replace(" ", "_").replace("-", "_")
+    clean_key = (key or "general_note").strip().lower().replace(" ", "_").replace("-", "_")
     if category == "identity" and clean_key in KEY_MAP:
         return KEY_MAP[clean_key]
     return KEY_MAP.get(clean_key, clean_key)
@@ -249,8 +313,7 @@ def save_memory(
 ) -> dict:
     """
     Save or update a long-term memory item.
-
-    Handles canonicalization, conflict resolution, and upserting.
+    Enforces secret protection, canonicalization, conflict resolution, and upserting.
     """
     if not user_id or not user_id.strip():
         user_id = "default"
@@ -265,32 +328,36 @@ def save_memory(
     if not value or not value.strip():
         raise ValueError("Memory value cannot be empty.")
 
+    clean_value = value.strip()
+
+    # Secret protection
+    if contains_secret(clean_value) or contains_secret(key):
+        raise ValueError("Security violation: Secrets or API keys cannot be stored in long-term memory.")
+
     category = normalize_category(category)
     key = normalize_key(category, key)
-    value = value.strip()
     importance = max(1, min(10, importance))
 
     conn = get_connection()
     now = datetime.now().isoformat()
 
-    # If saving the user's primary name, remove conflicting legacy name keys
-    if category == "identity" and key == "name":
+    # Conflict resolution: Clean up synonymous keys
+    cleanup_targets = SYNONYM_CLEANUP.get((category, key), [])
+    for c_cat, c_key in cleanup_targets:
         conn.execute(
             """
             DELETE FROM memories
             WHERE user_id = ?
-            AND (
-                (category IN ('identity', 'personal', 'user_preferences', 'preferences')
-                 AND key IN ('name', 'user_name', 'preferred_name', 'fullname', 'full_name'))
-            )
+            AND category = ?
+            AND key = ?
             """,
-            (user_id,),
+            (user_id, c_cat, c_key),
         )
 
     # Check if exact user_id, category, key exists
     existing = conn.execute(
         """
-        SELECT id
+        SELECT id, value, importance
         FROM memories
         WHERE user_id = ?
         AND category = ?
@@ -300,6 +367,8 @@ def save_memory(
     ).fetchone()
 
     if existing:
+        # Avoid unnecessary writes if identical
+        memory_id = existing["id"]
         conn.execute(
             """
             UPDATE memories
@@ -308,9 +377,8 @@ def save_memory(
                 updated_at = ?
             WHERE id = ?
             """,
-            (value, importance, now, existing["id"]),
+            (clean_value, max(importance, existing["importance"]), now, memory_id),
         )
-        memory_id = existing["id"]
     else:
         cursor = conn.execute(
             """
@@ -325,7 +393,7 @@ def save_memory(
             )
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (user_id, category, key, value, importance, now, now),
+            (user_id, category, key, clean_value, importance, now, now),
         )
         memory_id = cursor.lastrowid
 
@@ -337,7 +405,7 @@ def save_memory(
         "user_id": user_id,
         "category": category,
         "key": key,
-        "value": value,
+        "value": clean_value,
         "importance": importance,
         "updated_at": now,
     }
@@ -466,16 +534,32 @@ def search_memories(
 ) -> List[Dict[str, Any]]:
     """
     Search long-term memories by keyword matching across category, key, and value.
+    Supports multi-term search for better recall.
     """
     if not user_id or not user_id.strip():
         user_id = "default"
     user_id = user_id.strip()
 
-    search_pattern = f"%{query.strip()}%"
+    if not query or not query.strip():
+        return get_memories(user_id=user_id, limit=limit)
+
+    terms = [t.strip() for t in query.strip().split() if t.strip()]
+    if not terms:
+        return []
 
     conn = get_connection()
-    rows = conn.execute(
-        """
+    # Build dynamic search clauses for terms
+    clauses = []
+    params = [user_id]
+    for term in terms:
+        pattern = f"%{term}%"
+        clauses.append("(key LIKE ? OR value LIKE ? OR category LIKE ?)")
+        params.extend([pattern, pattern, pattern])
+
+    where_sql = " AND ".join(clauses)
+    params.append(limit)
+
+    query_sql = f"""
         SELECT
             id,
             user_id,
@@ -487,12 +571,12 @@ def search_memories(
             updated_at
         FROM memories
         WHERE user_id = ?
-        AND (key LIKE ? OR value LIKE ? OR category LIKE ?)
+        AND ({where_sql})
         ORDER BY importance DESC, updated_at DESC
         LIMIT ?
-        """,
-        (user_id, search_pattern, search_pattern, search_pattern, limit),
-    ).fetchall()
+    """
+
+    rows = conn.execute(query_sql, params).fetchall()
     conn.close()
 
     return [dict(row) for row in rows]
@@ -587,6 +671,7 @@ def delete_all_memories(
 def format_memories_for_prompt(memories: List[Dict[str, Any]]) -> str:
     """
     Format memories into clear, structured sections for the system prompt.
+    Avoids duplicate entries and preserves readability.
     """
     if not memories:
         return "No long-term memories stored yet."
@@ -599,10 +684,16 @@ def format_memories_for_prompt(memories: List[Dict[str, Any]]) -> str:
         "Other Details": [],
     }
 
+    seen_keys = set()
     for mem in memories:
         cat = mem.get("category", "").lower()
         key = mem.get("key", "").replace("_", " ").title()
         val = mem.get("value", "")
+
+        dedup_tuple = (cat, mem.get("key", "").lower())
+        if dedup_tuple in seen_keys:
+            continue
+        seen_keys.add(dedup_tuple)
 
         line = f"- {key}: {val}"
 
@@ -705,6 +796,20 @@ def get_recent_actions(
 # MEMORY GATE (AUTOMATIC BACKGROUND EXTRACTION)
 # ============================================================
 
+TRANSIENT_PATTERNS = [
+    re.compile(r"^\s*(?:save|write|export|output|create)\s+.*(?:report|file|txt|pdf|document)", re.IGNORECASE),
+    re.compile(r"^\s*(?:summarize|search|explain|what is|who is|calculate|solve)", re.IGNORECASE),
+]
+
+
+def _is_transient_command(text: str) -> bool:
+    """Check if the text represents a one-off ephemeral task."""
+    for pattern in TRANSIENT_PATTERNS:
+        if pattern.search(text):
+            return True
+    return False
+
+
 def process_memory(
     llm,
     user_id: str,
@@ -713,6 +818,7 @@ def process_memory(
 ) -> List[MemoryItem]:
     """
     Evaluate interaction and automatically extract persistent long-term memories.
+    Guards against transient task extraction, duplicate pollution, and secrets.
     """
     if not user_message or not user_message.strip():
         return []
@@ -721,9 +827,13 @@ def process_memory(
         user_id = "default"
     user_id = user_id.strip()
 
-    prompt = f"""You are Horizon's Long-Term Memory Extractor.
+    # Skip secret-bearing messages
+    if contains_secret(user_message):
+        return []
 
-Your task is to analyze the conversation turn and decide if the user shared persistent facts that should be remembered ACROSS DIFFERENT CONVERSATIONS.
+    prompt = f"""You are Nebula's Long-Term Memory Extractor.
+
+Your task is to analyze the conversation turn and decide if the user shared persistent facts that should be remembered ACROSS FUTURE CONVERSATIONS.
 
 ============================================================
 CRITICAL EXTRACTION RULES:
@@ -733,25 +843,25 @@ CRITICAL EXTRACTION RULES:
    - User's name or what they like to be called (e.g. "My name is Festus", "I'm Alex", "Call me Sam").
    - Extract with: category="identity", key="name", value="<User Name>", importance=10.
 
-2. EXPLICIT SAVE REQUESTS:
-   - If the user explicitly asks to save or remember something (e.g., "remember that...", "save this: ...", "don't forget...").
-   - Extract with: category="instruction" or appropriate category, importance=10.
+2. EXPLICIT PERSISTENT INSTRUCTIONS:
+   - If the user explicitly asks to save a standing rule or permanent preference (e.g., "Always format answers as bullets", "Remember that I live in London").
+   - DO NOT extract one-time prompt tasks (e.g. "Save a report on AI", "Summarize this PDF").
 
 3. PERSISTENT USER PREFERENCES:
-   - Coding languages, frameworks, formatting preferences, communication styles (e.g. "I prefer Python over JavaScript", "Always give concise answers").
+   - Coding languages, frameworks, tech stacks (e.g. "I prefer Python over JavaScript", "My favorite database is PostgreSQL").
    - Extract with: category="preference", importance=8-9.
 
 4. USER PROJECTS & SKILLS:
-   - Ongoing projects or stated professional skills (e.g. "I'm building an e-commerce agent", "I am a frontend engineer").
+   - Ongoing software projects or professional domain (e.g. "I am building an academic platform", "I am a backend engineer").
    - Extract with: category="project" or "skill", importance=7-8.
 
 ============================================================
 DO NOT STORE:
 ============================================================
-- Greetings, small talk, casual jokes.
-- One-time temporary requests (e.g., "Summarize this article", "What is 2+2?").
-- Facts generated by the assistant that the user did not say or confirm.
-- Transitory queries.
+- Transient commands: e.g. "write a report", "search for X", "summarize Y", "save to report.txt".
+- Greetings, small talk, jokes, conversational filler.
+- Facts made up by the assistant that the user did not say.
+- Secrets, credentials, tokens, or passwords.
 
 ============================================================
 CURRENT USER MESSAGE:
@@ -775,18 +885,29 @@ ASSISTANT'S RESPONSE:
             if not memory.category or not memory.key or not memory.value:
                 continue
 
+            # Skip transient requests mistakenly labeled as instruction
+            if memory.category.lower() in ("instruction", "context") and _is_transient_command(memory.value):
+                continue
+
             # Ensure minimum importance threshold
             if memory.importance < 5:
                 continue
 
-            save_memory(
-                user_id=user_id,
-                category=memory.category,
-                key=memory.key,
-                value=memory.value,
-                importance=memory.importance,
-            )
-            saved_memories.append(memory)
+            # Skip secrets
+            if contains_secret(memory.value) or contains_secret(memory.key):
+                continue
+
+            try:
+                save_memory(
+                    user_id=user_id,
+                    category=memory.category,
+                    key=memory.key,
+                    value=memory.value,
+                    importance=memory.importance,
+                )
+                saved_memories.append(memory)
+            except Exception as save_err:
+                logger.warning(f"Failed to save extracted memory: {save_err}")
 
         return saved_memories
 

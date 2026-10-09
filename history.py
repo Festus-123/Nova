@@ -1,16 +1,30 @@
 import sqlite3
+import shutil
+import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
+
+logger = logging.getLogger("nebula_history")
 
 # ============================================================
-# DATABASE
+# DATABASE PATH & MIGRATION
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
+LEGACY_DB_PATH = BASE_DIR / "nova_history.db"
+DB_PATH = BASE_DIR / "nebula_history.db"
 
-DB_PATH = BASE_DIR / "nova_history.db"
+
+def _migrate_legacy_db_if_needed():
+    """Safely migrate legacy nova_history.db to nebula_history.db if needed."""
+    if not DB_PATH.exists() and LEGACY_DB_PATH.exists():
+        try:
+            shutil.copy2(LEGACY_DB_PATH, DB_PATH)
+            logger.info("Migrated legacy history database from %s to %s", LEGACY_DB_PATH, DB_PATH)
+        except Exception as e:
+            logger.warning("Could not auto-copy legacy history database: %s", e)
 
 
 # ============================================================
@@ -19,15 +33,21 @@ DB_PATH = BASE_DIR / "nova_history.db"
 
 def get_connection():
     """
-    Create a connection to Horizon's conversation history database.
+    Create a robust connection to Nebula's conversation history database.
+    Enables foreign keys, WAL mode, and busy timeouts for concurrent stability.
     """
+    _migrate_legacy_db_if_needed()
+    target_path = DB_PATH if DB_PATH.exists() else (LEGACY_DB_PATH if LEGACY_DB_PATH.exists() else DB_PATH)
 
-    conn = sqlite3.connect(DB_PATH)
-
+    conn = sqlite3.connect(target_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
 
-    # Enable foreign key support
-    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 5000")
+    except Exception:
+        pass
 
     return conn
 
@@ -41,28 +61,21 @@ def initialize_history():
     Create the conversation history database and tables
     if they do not already exist.
     """
-
+    _migrate_legacy_db_if_needed()
     conn = get_connection()
-
     cursor = conn.cursor()
 
     # --------------------------------------------------------
     # Conversations
     # --------------------------------------------------------
-
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS conversations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-
             session_id TEXT NOT NULL UNIQUE,
-
             user_id TEXT NOT NULL,
-
             title TEXT,
-
             created_at TEXT NOT NULL,
-
             updated_at TEXT NOT NULL
         )
         """
@@ -71,20 +84,14 @@ def initialize_history():
     # --------------------------------------------------------
     # Messages
     # --------------------------------------------------------
-
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-
             session_id TEXT NOT NULL,
-
             role TEXT NOT NULL,
-
             content TEXT NOT NULL,
-
             created_at TEXT NOT NULL,
-
             FOREIGN KEY (session_id)
                 REFERENCES conversations(session_id)
                 ON DELETE CASCADE
@@ -95,7 +102,6 @@ def initialize_history():
     # --------------------------------------------------------
     # Indexes
     # --------------------------------------------------------
-
     cursor.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_messages_session
@@ -118,7 +124,6 @@ def initialize_history():
     )
 
     conn.commit()
-
     conn.close()
 
 
@@ -133,12 +138,12 @@ def create_conversation(
 ):
     """
     Create a conversation if it does not already exist.
-
     A session_id uniquely identifies one conversation.
     """
+    clean_user = (user_id or "default").strip() or "default"
+    clean_session = (session_id or "default").strip() or "default"
 
     conn = get_connection()
-
     now = datetime.now().isoformat()
 
     conn.execute(
@@ -150,12 +155,11 @@ def create_conversation(
             created_at,
             updated_at
         )
-
         VALUES (?, ?, ?, ?, ?)
         """,
         (
-            session_id,
-            user_id,
+            clean_session,
+            clean_user,
             title,
             now,
             now,
@@ -163,7 +167,6 @@ def create_conversation(
     )
 
     conn.commit()
-
     conn.close()
 
 
@@ -175,27 +178,23 @@ def touch_conversation(session_id: str):
     """
     Update the last activity time of a conversation.
     """
-
+    clean_session = (session_id or "default").strip() or "default"
     conn = get_connection()
-
     now = datetime.now().isoformat()
 
     conn.execute(
         """
         UPDATE conversations
-
         SET updated_at = ?
-
         WHERE session_id = ?
         """,
         (
             now,
-            session_id,
+            clean_session,
         ),
     )
 
     conn.commit()
-
     conn.close()
 
 
@@ -210,25 +209,22 @@ def update_conversation_title(
     """
     Update the title of a conversation.
     """
-
+    clean_session = (session_id or "default").strip() or "default"
     conn = get_connection()
 
     conn.execute(
         """
         UPDATE conversations
-
         SET title = ?
-
         WHERE session_id = ?
         """,
         (
             title,
-            session_id,
+            clean_session,
         ),
     )
 
     conn.commit()
-
     conn.close()
 
 
@@ -244,15 +240,8 @@ def save_message(
 ):
     """
     Save a message to a conversation.
-
-    role should normally be:
-
-        user
-        assistant
-        system
-        tool
+    role should normally be: user, assistant, system, tool.
     """
-
     allowed_roles = {
         "user",
         "assistant",
@@ -268,14 +257,16 @@ def save_message(
     if not content or not content.strip():
         return
 
+    clean_user = (user_id or "default").strip() or "default"
+    clean_session = (session_id or "default").strip() or "default"
+
     # Make sure the conversation exists
     create_conversation(
-        user_id=user_id,
-        session_id=session_id,
+        user_id=clean_user,
+        session_id=clean_session,
     )
 
     conn = get_connection()
-
     now = datetime.now().isoformat()
 
     conn.execute(
@@ -286,23 +277,21 @@ def save_message(
             content,
             created_at
         )
-
         VALUES (?, ?, ?, ?)
         """,
         (
-            session_id,
+            clean_session,
             role,
-            content,
+            content.strip(),
             now,
         ),
     )
 
     conn.commit()
-
     conn.close()
 
     # Update conversation activity
-    touch_conversation(session_id)
+    touch_conversation(clean_session)
 
 
 # ============================================================
@@ -313,35 +302,31 @@ def get_conversation_history(
     user_id: str,
     session_id: str,
     limit: int = 20,
-):
+) -> List[Dict[str, Any]]:
     """
     Retrieve the most recent messages from one conversation.
-
-    Messages are returned in chronological order so they can
-    be passed directly to Horizon.
+    Messages are returned in chronological order.
     """
+    clean_user = (user_id or "default").strip() or "default"
+    clean_session = (session_id or "default").strip() or "default"
 
     conn = get_connection()
 
-    # First make sure the conversation belongs to this user.
     conversation = conn.execute(
         """
         SELECT session_id
-
         FROM conversations
-
         WHERE session_id = ?
         AND user_id = ?
         """,
         (
-            session_id,
-            user_id,
+            clean_session,
+            clean_user,
         ),
     ).fetchone()
 
     if not conversation:
         conn.close()
-
         return []
 
     rows = conn.execute(
@@ -352,33 +337,23 @@ def get_conversation_history(
             role,
             content,
             created_at
-
         FROM (
             SELECT *
-
             FROM messages
-
             WHERE session_id = ?
-
             ORDER BY created_at DESC
-
             LIMIT ?
         )
-
         ORDER BY created_at ASC
         """,
         (
-            session_id,
+            clean_session,
             limit,
         ),
     ).fetchall()
 
     conn.close()
-
-    return [
-        dict(row)
-        for row in rows
-    ]
+    return [dict(row) for row in rows]
 
 
 # ============================================================
@@ -389,13 +364,10 @@ def get_recent_messages(
     user_id: str,
     session_id: str,
     limit: int = 20,
-):
+) -> List[Dict[str, Any]]:
     """
     Alias for get_conversation_history().
-
-    This makes the intent clearer when used by main.py.
     """
-
     return get_conversation_history(
         user_id=user_id,
         session_id=session_id,
@@ -410,13 +382,14 @@ def get_recent_messages(
 def get_conversation(
     user_id: str,
     session_id: str,
-):
+) -> Optional[Dict[str, Any]]:
     """
     Retrieve information about one conversation.
     """
+    clean_user = (user_id or "default").strip() or "default"
+    clean_session = (session_id or "default").strip() or "default"
 
     conn = get_connection()
-
     row = conn.execute(
         """
         SELECT
@@ -426,24 +399,18 @@ def get_conversation(
             title,
             created_at,
             updated_at
-
         FROM conversations
-
         WHERE session_id = ?
         AND user_id = ?
         """,
         (
-            session_id,
-            user_id,
+            clean_session,
+            clean_user,
         ),
     ).fetchone()
 
     conn.close()
-
-    if not row:
-        return None
-
-    return dict(row)
+    return dict(row) if row else None
 
 
 # ============================================================
@@ -453,16 +420,13 @@ def get_conversation(
 def get_user_conversations(
     user_id: str,
     limit: int = 50,
-):
+) -> List[Dict[str, Any]]:
     """
     Get conversations belonging to a user.
-
-    Useful later for building the chat history sidebar
-    in the frontend.
     """
+    clean_user = (user_id or "default").strip() or "default"
 
     conn = get_connection()
-
     rows = conn.execute(
         """
         SELECT
@@ -472,27 +436,19 @@ def get_user_conversations(
             title,
             created_at,
             updated_at
-
         FROM conversations
-
         WHERE user_id = ?
-
         ORDER BY updated_at DESC
-
         LIMIT ?
         """,
         (
-            user_id,
+            clean_user,
             limit,
         ),
     ).fetchall()
 
     conn.close()
-
-    return [
-        dict(row)
-        for row in rows
-    ]
+    return [dict(row) for row in rows]
 
 
 # ============================================================
@@ -505,28 +461,24 @@ def delete_conversation(
 ):
     """
     Delete an entire conversation and all its messages.
-
-    Because messages use ON DELETE CASCADE, deleting the
-    conversation automatically deletes its messages.
     """
+    clean_user = (user_id or "default").strip() or "default"
+    clean_session = (session_id or "default").strip() or "default"
 
     conn = get_connection()
-
     conn.execute(
         """
         DELETE FROM conversations
-
         WHERE session_id = ?
         AND user_id = ?
         """,
         (
-            session_id,
-            user_id,
+            clean_session,
+            clean_user,
         ),
     )
 
     conn.commit()
-
     conn.close()
 
 
@@ -539,25 +491,21 @@ def delete_user_conversations(
 ):
     """
     Delete every conversation belonging to a user.
-
-    This does NOT affect long-term memory.
     """
+    clean_user = (user_id or "default").strip() or "default"
 
     conn = get_connection()
-
     conn.execute(
         """
         DELETE FROM conversations
-
         WHERE user_id = ?
         """,
         (
-            user_id,
+            clean_user,
         ),
     )
 
     conn.commit()
-
     conn.close()
 
 
@@ -568,33 +516,30 @@ def delete_user_conversations(
 def count_messages(
     user_id: str,
     session_id: str,
-):
+) -> int:
     """
     Return the number of messages in a conversation.
     """
+    clean_user = (user_id or "default").strip() or "default"
+    clean_session = (session_id or "default").strip() or "default"
 
     conn = get_connection()
-
     row = conn.execute(
         """
         SELECT COUNT(*) AS count
-
         FROM messages m
-
         JOIN conversations c
             ON m.session_id = c.session_id
-
         WHERE m.session_id = ?
         AND c.user_id = ?
         """,
         (
-            session_id,
-            user_id,
+            clean_session,
+            clean_user,
         ),
     ).fetchone()
 
     conn.close()
-
     return row["count"] if row else 0
 
 

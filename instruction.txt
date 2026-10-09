@@ -1,91 +1,1912 @@
-You are an expert Python UI/UX engineer and AI audio specialist working on the "agent" codebase (`desktop_agent.py`).
+# ============================================================
+# NEBULA — EXISTING AI AGENT EXTENSION
+# GENERIC DOCUMENT UNDERSTANDING & SORTING SYSTEM
+# ============================================================
 
-The user is happy with the core functionality and branding, but we need to refine two specific areas without breaking any existing memory, tool, or prompt logic:
+IMPORTANT:
 
-1. ENABLE NATIVE / NATURAL TEXT-TO-SPEECH (VOICE OUTPUT)
-2. UPGRADE TO A SUBTLE, ANIMATED "ANTIGRAVITY-STYLE" LIVE TERMINAL INTERFACE
+This project already exists.
 
-============================================================
-FEATURE 1: NATURAL VOICE OUTPUT (TTS)
-============================================================
-- Ensure Horizon synthesizes and speaks its responses out loud using text-to-speech.
-- Implementation requirement:
-  * Primary: Use `pyttsx3` or `edge-tts` (or `gTTS` with temporary audio play using `pygame` / `playsound`).
-  * Non-blocking or smooth playback so it doesn't freeze the terminal thread indefinitely.
-  * Filter out raw markdown symbols (like `**`, `###`, bullet points `*`) from the string BEFORE passing it to the TTS engine so it reads smooth, natural prose out loud.
+The current project is an AI agent/backend system that already has:
+- LangChain-based agent functionality
+- research functionality
+- FastAPI API
+- long-term memory
+- conversation history
+- tools
+- frontend communication
+- database files
+- deployment infrastructure
 
-============================================================
-FEATURE 2: LIVE ANIMATED INDUSTRIAL UI (NO SCREEN CLUTTER)
-============================================================
-Refactor the terminal rendering in `desktop_agent.py` to use a dynamic live display (e.g., using `rich.live.Live` or `textual`) so the terminal window maintains ONE fixed, elegant screen rather than appending repeating header boxes down the console.
+DO NOT rebuild this project from scratch.
 
-UI Layout Specifications:
-1. FIXED HEADER PANEL:
-   - "✦ HORIZON DESKTOP // VOICE INTERFACE [ v1.2.0 ]"
-   - User ID, Session ID, and active status.
+DO NOT replace the existing agent architecture simply because a new
+document-sorting capability is being introduced.
 
-2. SUBTLE ANIMATED STATUS CORE (THE "HORIZON HEART"):
-   - Instead of static text, create a live-updating ASCII animation frame depending on state:
-     * [STANDBY]: A gentle pulsating indicator: `[  •  ]` -> `[  ◦  ]` -> `[     ]`.
-     * [LISTENING]: A clean horizontal soundwave animation: `───░▒▓▒░───`.
-     * [THINKING]: An active orbital ring/spinner: `⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏`.
-     * [SPEAKING]: An active equalizer spectrum: ` ▃▅▇▆▅▃ `.
-   - Keep the animation extremely lightweight so it runs smoothly on modest PC specs without causing high CPU usage.
+DO NOT remove working functionality.
 
-3. TRAJECTORY & LOGS PANEL (SCROLLING):
-   - Displays real-time status logs with clean timestamps:
-     `> [02:00:21] Query received`
-     `> [02:00:32] Synthesizing audio response via TTS...`
+DO NOT arbitrarily rewrite main.py, memory.py, history.py, tools.py,
+server.py, or other existing files without first understanding how
+they currently work.
 
-4. CLEAN RESPONSE BOX:
-   - Displays the printed version of Horizon's last answer cleanly in a sleek obsidian box.
+The objective is to EXTEND the existing system into:
 
-5. NON-BLOCKING INPUT COMMAND BAR:
-   - Maintain hotkey choices: `[V] Voice Query  [T] Text Query  [B] Executive Briefing  [M] Memory Vault  [Q] Exit`
-   - Input line stays pinned cleanly at the bottom.
+NEBULA
 
-============================================================
-CONSTRAINTS
-============================================================
-- Do NOT alter `server.py`, `memory.py`, `history.py`, or `tools.py`.
-- Keep memory retrieval intact for user `Festus`.
-- Ensure all necessary python requirements are added to `requirements.txt`.
+while preserving the existing capabilities.
 
-Inspect `desktop_agent.py`, refactor the rendering loop using `rich.live.Live` (or lightweight UI framework), add the TTS module, and test the flow step-by-step.
+The new major capability is:
 
-You are an expert Python audio/AI engineer updating `desktop_agent.py` in the "agen" codebase.
+GENERIC AI-ASSISTED DOCUMENT UNDERSTANDING,
+GROUPING, CLASSIFICATION AND SORTING.
 
-We want to upgrade Horizon's interaction flow by adding hands-free, local Wake-Word Detection ("Hey Horizon") so the user doesn't have to manually press 'V' to initiate listening.
+TACSFON Academic Hub will be the first major consumer of this
+capability, but the sorting system MUST NOT be hardcoded specifically
+for TACSFON.
 
-============================================================
-FEATURE: LOCAL WAKE-WORD DETECTION
-============================================================
-1. ENGINE SELECTION:
-   - Primary: Use `vosk` with a small offline English model (e.g., `vosk-model-small-en-us`) for zero-cost, fully local, lightweight wake-word listening.
-   - Secondary / Alternative: Provide a fallback path using `pvporcupine` if Picovoice keys/keywords are present.
+The sorting engine must be reusable by other applications by simply
+providing a different sorting schema.
 
-2. LISTENING & WAKE WORKFLOW:
-   - Create a background listener thread/loop that continuously monitors the microphone input stream with low CPU overhead.
-   - Set the target wake phrase to detect: "hey horizon" (or "horizon").
-   - When the wake word is detected:
-     a. Trigger a quick audio chime/sound or update the UI Status Core immediately to `[WOKEN / LISTENING]`.
-     b. Automatically transition straight into capturing the user's voice query (the existing speech recognition pipeline).
-     c. Process the query through Horizon, speak the response via TTS, and automatically return to the background wake-word listener loop (`[STANDBY / LISTENING FOR 'HEY HORIZON']`).
 
-3. TUI INTEGRATION & HOTKEY OVERRIDES:
-   - Keep manual controls active! The user should still be able to press:
-     * [M] Mute/Unmute Wake-Word Listener (toggles background listening on/off)
-     * [T] Manual Text Query
-     * [Q] Exit
-   - Update the top Status Bar in the TUI to reflect wake-word state:
-     `🎙️ WAKE-WORD ACTIVE ("Hey Horizon")` vs `🔇 WAKE-WORD MUTED`
+# ============================================================
+# 1. FIRST STEP — AUDIT THE EXISTING PROJECT
+# ============================================================
 
-============================================================
-TECHNICAL CONSTRAINTS & REQUIREMENTS
-============================================================
-- Do NOT break or modify `server.py`, `memory.py`, `history.py`, or existing tool definitions.
-- Ensure audio stream thread handling is clean to prevent sound device conflicts between the wake-word listener, speech recognizer, and TTS output player.
-- Automatically check for/download the small Vosk model if missing, or prompt clear instructions on terminal startup.
-- Add `vosk` and `pyaudio` (or `sounddevice`) to `requirements.txt`.
+Before changing code, inspect the entire project.
 
-Inspect `desktop_agent.py`, add the background wake-word thread logic cleanly, update the live TUI status panel, and test the flow step-by-step.
+At minimum inspect:
+
+- main.py
+- server.py
+- tools.py
+- memory.py
+- history.py
+- instruction.txt
+- requirement.txt / requirements.txt
+- desktop_agent.py
+- voice_engine.py
+- patch/
+- .env handling
+- database files
+- existing LangChain setup
+- existing model/provider configuration
+- existing frontend communication
+- existing API endpoints
+- existing Render deployment configuration
+
+Also inspect any other Python files discovered in the project.
+
+Understand:
+
+1. How the current agent is created.
+2. How tools are registered.
+3. How the current LLM is selected.
+4. How research works.
+5. How memory works.
+6. How conversation history works.
+7. How the frontend communicates with FastAPI.
+8. How environment variables are loaded.
+9. How the application starts on Render.
+10. Which dependencies are already installed.
+
+DO NOT assume that the current architecture is broken.
+
+Only modify what is necessary.
+
+
+# ============================================================
+# 2. RENAME THE PROJECT TO NEBULA
+# ============================================================
+
+The existing project has previous naming such as:
+
+- Nova
+- Horizon
+- nova_history.db
+- nova_memory.db
+- "Horizon API"
+- "Horizon Agent"
+
+The final AI product name should be:
+
+NEBULA
+
+Clean up stale application-facing branding such as:
+
+- API title
+- descriptions
+- health responses
+- documentation strings
+- logs
+- user-facing names
+
+For example:
+
+"Research & Long-Term Memory Agent API for Horizon"
+
+should become an appropriate Nebula description.
+
+Do not blindly rename database files if doing so could destroy or
+disconnect existing data.
+
+If the existing databases contain valuable data:
+
+1. preserve them
+2. inspect their schema
+3. migrate safely if renaming is necessary
+4. maintain backwards compatibility where practical
+
+Do not delete:
+- nova_memory.db
+- nova_history.db
+- or any other existing data
+
+just because the project is being renamed.
+
+The internal filename can remain temporarily if migration would be
+unsafe.
+
+The important requirement is that the APPLICATION is now Nebula.
+
+
+# ============================================================
+# 3. EXISTING FUNCTIONALITY MUST REMAIN
+# ============================================================
+
+The following existing capabilities must continue working:
+
+- existing AI/research interaction
+- existing /research endpoint
+- conversation history
+- long-term memory
+- memory search
+- memory creation
+- memory deletion
+- conversation listing
+- conversation retrieval
+- conversation deletion
+- existing frontend communication
+- existing CORS behavior where appropriate
+- existing Render deployment
+- existing environment configuration
+
+Do not remove existing FastAPI routes.
+
+If an existing route needs modification, preserve its existing contract
+unless there is a strong technical reason to change it.
+
+If an API response currently used by the frontend is changed, update the
+frontend contract safely rather than silently breaking it.
+
+
+# ============================================================
+# 4. NEW CAPABILITY — DOCUMENT SORTING ENGINE
+# ============================================================
+
+Build a new generic capability:
+
+DOCUMENT SORTING / DOCUMENT UNDERSTANDING TOOL
+
+This is NOT a TACSFON-specific feature.
+
+TACSFON is simply one client.
+
+The engine must be able to receive:
+
+1. raw documents/files
+2. a requested sorting schema
+3. optional allowed values
+4. optional additional instructions/context
+
+and return structured document groups/classifications.
+
+Conceptual operation:
+
+FILES
++
+SORTING SCHEMA
++
+ALLOWED VALUES
++
+OPTIONAL CONTEXT
+        ↓
+NEBULA
+        ↓
+DOCUMENT UNDERSTANDING
+        ↓
+PAGE ANALYSIS
+        ↓
+DOCUMENT/GROUP DETECTION
+        ↓
+METADATA EXTRACTION
+        ↓
+VALIDATION
+        ↓
+STRUCTURED RESULT
+
+
+# ============================================================
+# 5. THE SORTING SYSTEM MUST BE DYNAMIC
+# ============================================================
+
+DO NOT hardcode:
+
+TACSFON
+OAUSTECH
+School of Science
+Computer Science
+CSC 308
+500 Level
+2024/2025
+First Semester
+
+inside the core sorting engine.
+
+Those are merely example values.
+
+The sorting engine must receive the desired structure dynamically.
+
+For example, TACSFON may send:
+
+{
+  "schema": [
+    "material_type",
+    "level",
+    "school",
+    "department",
+    "course",
+    "session",
+    "semester"
+  ]
+}
+
+Another application could send:
+
+{
+  "schema": [
+    "document_type",
+    "country",
+    "state",
+    "institution",
+    "year"
+  ]
+}
+
+Another application could send:
+
+{
+  "schema": [
+    "category",
+    "department",
+    "project",
+    "year"
+  ]
+}
+
+The same document-sorting engine should be able to operate on all of
+these.
+
+The schema determines what Nebula needs to extract and organize.
+
+Do not create a separate hardcoded sorter for each client.
+
+
+# ============================================================
+# 6. TACSFON'S CURRENT SORTING SCHEMA
+# ============================================================
+
+TACSFON will currently send this schema:
+
+Material Type
+→ Level
+→ School
+→ Department
+→ Course
+→ Academic Session
+→ Semester
+
+Current material types:
+
+- Past Questions
+- Manuals / Lecture Notes
+- Workbooks
+- Materials
+
+Current levels:
+
+- 100
+- 200
+- 300
+- 400
+- 500
+
+However:
+
+DO NOT permanently hardcode these values into the generic engine.
+
+TACSFON itself will provide valid values in the request where
+appropriate.
+
+
+# ============================================================
+# 7. DOCUMENT TYPES TO SUPPORT
+# ============================================================
+
+The document-processing system must support:
+
+- PDF
+- JPG
+- JPEG
+- PNG
+- WebP
+- DOCX
+
+The system must determine the appropriate processing strategy based on
+the actual file type.
+
+For example:
+
+PDF:
+- inspect document metadata where useful
+- extract text where possible
+- render pages when visual analysis is required
+- preserve page ordering
+
+Images:
+- visual analysis
+- OCR where necessary
+- preserve image identity/order
+
+DOCX:
+- extract text
+- inspect document structure
+- inspect tables where relevant
+- preserve document structure where possible
+
+Do not assume that text extraction alone is enough.
+
+Academic documents can contain:
+- scanned images
+- screenshots
+- handwritten content
+- visual headers
+- logos
+- page numbers
+- course codes embedded visually
+- questions without text headers
+
+Use the appropriate combination of extraction, OCR, parsing and
+vision/model capabilities available in the existing system.
+
+
+# ============================================================
+# 8. THE CORE PROBLEM — DOCUMENT GROUPING
+# ============================================================
+
+THIS IS THE MOST IMPORTANT PART OF THE FEATURE.
+
+Do NOT treat:
+
+ONE FILE = ONE INDEPENDENT DOCUMENT
+
+as a universal rule.
+
+Academic material often arrives as a messy collection of pages/images.
+
+Example:
+
+Image 1:
+
+EEE 306
+Question 1
+Question 2
+Question 3
+Question 4
+
+Image 2:
+
+No course header.
+
+Question 5
+Question 6
+
+Image 3:
+
+CPS 401
+Question 1
+Question 2
+Question 3
+Question 4
+
+A naive classifier might produce:
+
+Image 1 → EEE 306
+Image 2 → Unknown
+Image 3 → CPS 401
+
+That is incorrect.
+
+Nebula should reason that:
+
+Image 1 + Image 2
+→ EEE 306
+
+Image 3
+→ CPS 401
+
+
+# ============================================================
+# 9. CONTINUATION-PAGE UNDERSTANDING
+# ============================================================
+
+Nebula must be capable of identifying continuation pages.
+
+A page does NOT need to repeat its course code/header.
+
+Signals may include:
+
+- question numbering
+- continuation of a question
+- sequential numbering
+- visual similarity
+- typography
+- page numbering
+- subject terminology
+- document structure
+- neighboring page context
+- repeated examination formatting
+- previous/next page relationship
+- question sequence
+- shared instructions
+- shared header/footer
+- visual layout
+- semantic continuity
+
+Example:
+
+Page 1:
+CSC 308
+1...
+2...
+3...
+
+Page 2:
+4...
+5...
+6...
+
+Page 3:
+7...
+8...
+
+Page 4:
+CPS 401
+1...
+2...
+
+The expected grouping is:
+
+GROUP A
+Pages 1–3
+→ CSC 308
+
+GROUP B
+Page 4
+→ CPS 401
+
+
+# ============================================================
+# 10. CROSS-FILE RELATIONSHIP ANALYSIS
+# ============================================================
+
+The same principle must work when pages are uploaded as separate
+files.
+
+Example:
+
+upload_001.jpg
+upload_002.jpg
+upload_003.jpg
+upload_004.jpg
+upload_005.jpg
+
+Nebula must not classify each one independently without considering
+the batch.
+
+The complete upload request represents a CONTEXTUAL BATCH.
+
+Nebula should be able to determine relationships across the batch.
+
+Possible relationships:
+
+- continuation
+- same document
+- new document
+- duplicate
+- unrelated document
+- unclear relationship
+
+
+# ============================================================
+# 11. DOCUMENT BOUNDARY DETECTION
+# ============================================================
+
+Nebula should identify where one academic document/group ends and
+another begins.
+
+For example:
+
+Page 1
+EEE 306
+
+Page 2
+EEE 306 continuation
+
+Page 3
+EEE 306 continuation
+
+Page 4
+CPS 401
+
+Page 5
+CPS 401 continuation
+
+Expected:
+
+GROUP 1:
+Pages 1–3
+
+GROUP 2:
+Pages 4–5
+
+Do not rely solely on course headers.
+
+Do not assume that a new image means a new document.
+
+Do not assume that the absence of a header means an isolated document.
+
+Use contextual reasoning.
+
+
+# ============================================================
+# 12. DOCUMENT CLASSIFICATION
+# ============================================================
+
+After grouping related pages/files, determine the requested metadata.
+
+For TACSFON this may include:
+
+material_type
+level
+school
+department
+course
+session
+semester
+
+The engine should extract information from:
+
+- visible headers
+- document body
+- course codes
+- examination instructions
+- academic terminology
+- page relationships
+- neighboring documents
+- uploaded batch context
+- metadata where useful
+
+Do not invent missing information.
+
+If the evidence is insufficient, return:
+
+status = "isolated"
+
+rather than hallucinating a classification.
+
+
+# ============================================================
+# 13. CONFIDENCE AND EVIDENCE
+# ============================================================
+
+The sorting system should distinguish between:
+
+HIGH CONFIDENCE
+MEDIUM CONFIDENCE
+LOW CONFIDENCE
+INSUFFICIENT INFORMATION
+
+Do not use confidence as a fake numerical certainty.
+
+If numerical confidence is implemented, it must have a clear and
+consistent meaning.
+
+The response should include useful evidence/reasons where appropriate.
+
+Example:
+
+{
+  "status": "isolated",
+  "reason": "Course code could not be determined from the document
+              or its neighboring pages."
+}
+
+Another example:
+
+{
+  "status": "classified",
+  "confidence": "high",
+  "evidence": [
+    "Course code appears in first page header",
+    "Continuation pages contain sequential question numbers",
+    "Final page precedes a new course header"
+  ]
+}
+
+The goal is to help the human administrator understand WHY Nebula
+made the decision.
+
+
+# ============================================================
+# 14. ISOLATION RULE
+# ============================================================
+
+If Nebula cannot safely classify a document/group:
+
+DO NOT GUESS.
+
+Return:
+
+status = "isolated"
+
+Possible isolation reasons:
+
+- missing course
+- ambiguous course
+- missing level
+- ambiguous document boundary
+- unreadable page
+- conflicting metadata
+- unsupported content
+- insufficient context
+- multiple possible classifications
+- invalid schema value
+
+An isolated result must include a human-readable reason.
+
+
+# ============================================================
+# 15. REJECTED STATUS
+# ============================================================
+
+Nebula may identify files that appear invalid or unusable.
+
+Examples:
+
+- corrupted file
+- unsupported format
+- completely unreadable content
+- empty file
+- obviously unrelated content
+
+However:
+
+Nebula must NOT autonomously decide that legitimate but ambiguous
+academic material should be permanently rejected.
+
+Use:
+
+isolated
+
+when human review is appropriate.
+
+Use:
+
+rejected
+
+for genuinely invalid/unusable input where appropriate.
+
+Final approval/rejection remains a TACSFON administrator action.
+
+Nebula does NOT publish documents.
+
+
+# ============================================================
+# 16. ADMIN CORRECTION / REPROCESSING
+# ============================================================
+
+TACSFON may send an isolated document back to Nebula with additional
+information.
+
+Example:
+
+Original result:
+
+status = isolated
+
+reason:
+"Course could not be determined."
+
+Admin provides:
+
+course = EEE 306
+
+TACSFON then sends the document/group again with:
+
+- original document context
+- previous classification result
+- administrator correction
+- additional metadata
+- original sorting schema
+
+Nebula should re-evaluate the document using the new information.
+
+Do not treat administrator-provided information as if it came from
+the document itself.
+
+Represent it as external/contextual input.
+
+Example conceptual structure:
+
+{
+  "additional_context": {
+    "course": "EEE 306",
+    "source": "administrator"
+  }
+}
+
+
+# ============================================================
+# 17. SORTING TOOL ARCHITECTURE
+# ============================================================
+
+Implement the document sorter as a modular capability/tool.
+
+Conceptually:
+
+tools/
+    document_sorter/
+        ...
+    
+The exact directory structure should follow the existing project's
+architecture.
+
+The sorting capability should have clear separation between:
+
+1. File ingestion
+2. File validation
+3. Content extraction
+4. OCR/vision processing
+5. Page representation
+6. Document grouping
+7. Metadata extraction
+8. Schema validation
+9. Classification
+10. Filename proposal
+11. Structured response generation
+
+Do not place all document-sorting logic inside server.py.
+
+server.py should primarily expose the API.
+
+Keep processing logic modular and testable.
+
+
+# ============================================================
+# 18. AI VS DETERMINISTIC PROCESSING
+# ============================================================
+
+Use AI where semantic reasoning is genuinely required.
+
+AI should help with:
+
+- document understanding
+- OCR interpretation
+- course-code interpretation
+- continuation detection
+- page relationship reasoning
+- document boundary reasoning
+- semantic classification
+- ambiguous document analysis
+
+Use deterministic Python logic for:
+
+- file validation
+- size limits
+- MIME/type checks
+- schema validation
+- allowed-value validation
+- filename generation
+- filename sanitization
+- response validation
+- duplicate detection where deterministically possible
+- temporary file management
+- cleanup
+- API protocol handling
+
+DO NOT ask the LLM to perform tasks that ordinary deterministic code
+can safely perform.
+
+
+# ============================================================
+# 19. FINAL FILENAME
+# ============================================================
+
+Nebula may PROPOSE a filename.
+
+However, Nebula must not be treated as the final authority for the
+physical filename.
+
+For TACSFON, a proposed filename could look like:
+
+past_questions-500lvl-school_of_science-computer_science-CSC_308-2024_2025-first_semester.jpg
+
+The TACSFON backend will ultimately generate/validate the final
+storage filename.
+
+Nebula should return a structured filename proposal based on the
+provided schema.
+
+Do not permanently rename or move TACSFON files inside Nebula.
+
+
+# ============================================================
+# 20. NEBULA MUST NOT OWN TACSFON STORAGE
+# ============================================================
+
+Nebula should NOT:
+
+- upload directly to Supabase
+- create Academic Hub records
+- publish Academic Hub materials
+- approve materials
+- modify TACSFON's database
+- manage TACSFON authentication
+
+Nebula's responsibility ends at:
+
+INPUT
+→ UNDERSTAND
+→ GROUP
+→ CLASSIFY
+→ VALIDATE
+→ RETURN STRUCTURED RESULT
+
+TACSFON owns:
+
+- storage
+- approval
+- publication
+- Academic Hub database
+- access control
+
+
+# ============================================================
+# 21. FASTAPI INTEGRATION
+# ============================================================
+
+The existing FastAPI application must remain the primary API layer.
+
+Do NOT create an unrelated second server unless absolutely necessary.
+
+Add a dedicated document-processing endpoint.
+
+The exact route can be selected after inspecting the existing API style.
+
+A conceptual route is:
+
+POST /document-sorting
+
+or:
+
+POST /sort-documents
+
+Use whichever naming best fits the existing API architecture.
+
+The endpoint must accept:
+
+- uploaded files
+- sorting schema
+- allowed values
+- optional additional context
+- optional request ID
+
+Use multipart/form-data for file uploads where appropriate.
+
+
+# ============================================================
+# 22. TACSFON REQUEST CONTRACT
+# ============================================================
+
+TACSFON will send requests similar to:
+
+FILES
++
+sorting_schema
++
+allowed_values
++
+request_id
++
+optional additional_context
+
+Example conceptual request:
+
+{
+  "task": "document_sorting",
+  "request_id": "uuid",
+  "schema": [
+    "material_type",
+    "level",
+    "school",
+    "department",
+    "course",
+    "session",
+    "semester"
+  ],
+  "allowed_values": {
+    "material_type": [
+      "Past Questions",
+      "Manuals / Lecture Notes",
+      "Workbooks",
+      "Materials"
+    ],
+    "levels": [
+      "100",
+      "200",
+      "300",
+      "400",
+      "500"
+    ],
+    "schools": [],
+    "departments": [],
+    "courses": [],
+    "sessions": [],
+    "semesters": []
+  },
+  "additional_context": {}
+}
+
+The actual implementation should use proper Pydantic models and
+validation.
+
+Do not accept arbitrary malformed schemas.
+
+
+# ============================================================
+# 23. RESPONSE CONTRACT
+# ============================================================
+
+Return structured JSON.
+
+Do not return only natural-language prose.
+
+The response must be machine-readable.
+
+Conceptual response:
+
+{
+  "status": "success",
+  "request_id": "...",
+  "groups": [
+    {
+      "group_id": "...",
+      "source_files": [
+        {
+          "file_id": "...",
+          "original_filename": "...",
+          "page_numbers": []
+        }
+      ],
+      "classification": {
+        "material_type": "...",
+        "level": "...",
+        "school": "...",
+        "department": "...",
+        "course": "...",
+        "session": "...",
+        "semester": "..."
+      },
+      "proposed_filename": "...",
+      "status": "classified",
+      "confidence": "high",
+      "evidence": [],
+      "warnings": []
+    }
+  ],
+  "isolated": [],
+  "rejected": []
+}
+
+The exact schema can be improved during implementation, but it must
+remain stable and documented.
+
+Use Pydantic response models.
+
+
+# ============================================================
+# 24. GROUP SOURCE INFORMATION
+# ============================================================
+
+Every classification group must preserve its source relationship.
+
+Example:
+
+{
+  "group_id": "group_001",
+  "source_files": [
+    {
+      "file_id": "file_001",
+      "original_filename": "IMG_001.jpg",
+      "page_numbers": [1]
+    },
+    {
+      "file_id": "file_002",
+      "original_filename": "IMG_002.jpg",
+      "page_numbers": [1]
+    }
+  ]
+}
+
+This is important because TACSFON needs to know which raw files belong
+to which resulting academic material.
+
+Never lose the original file identity during processing.
+
+
+# ============================================================
+# 25. FILE SIZE AND SECURITY
+# ============================================================
+
+Nebula must support TACSFON requests up to:
+
+100 MB total request size.
+
+Validate limits server-side.
+
+Reject requests exceeding the configured maximum.
+
+Do not load arbitrarily large files into memory if streaming or
+temporary-file processing can be used.
+
+Use temporary storage where appropriate.
+
+Temporary files must be cleaned up after processing, including after
+errors where possible.
+
+Do not permanently retain TACSFON uploads unless there is an explicit
+reason and configured retention policy.
+
+Do not log:
+- file contents
+- uploaded documents
+- API secrets
+- recovery secrets
+- sensitive user data
+
+
+# ============================================================
+# 26. SUPPORTED MIME TYPES
+# ============================================================
+
+Support:
+
+application/pdf
+
+image/jpeg
+image/jpg where applicable
+image/png
+image/webp
+
+application/vnd.openxmlformats-officedocument.wordprocessingml.document
+
+Do not rely only on extensions.
+
+Validate actual content/type where practical.
+
+
+# ============================================================
+# 27. API SECURITY
+# ============================================================
+
+TACSFON should authenticate server-to-server requests to Nebula.
+
+Use an environment variable such as:
+
+NEBULA_API_KEY=
+
+or an appropriately named equivalent.
+
+Never expose this secret to the TACSFON browser/client.
+
+Nebula must validate the incoming authentication credential.
+
+Do not rely on CORS as an authentication mechanism.
+
+CORS controls browser access.
+
+It does NOT replace API authentication.
+
+Keep the existing CORS behavior needed by the current frontend while
+adding appropriate production restrictions.
+
+Do not leave:
+
+allow_origins=["*"]
+
+as the only production security mechanism if credentials are involved.
+
+Inspect the existing deployment and frontend URLs before tightening
+CORS so the existing frontend is not accidentally broken.
+
+
+# ============================================================
+# 28. RENDER DEPLOYMENT
+# ============================================================
+
+Nebula is deployed on Render.
+
+The implementation must remain compatible with Render.
+
+Do not depend on:
+
+- local permanent filesystem storage
+- machine-specific absolute paths
+- files surviving indefinitely between requests
+- development-only services
+
+Use temporary storage only for processing.
+
+Anything that must persist should use an appropriate persistent
+service/database/storage architecture.
+
+Environment variables must be configured through Render.
+
+Do not commit .env.
+
+
+# ============================================================
+# 29. ERROR HANDLING
+# ============================================================
+
+The API must return useful structured errors.
+
+Handle:
+
+- invalid API key
+- no files
+- unsupported file type
+- file too large
+- malformed sorting schema
+- missing required schema
+- invalid allowed values
+- document extraction failure
+- OCR failure
+- model failure
+- timeout
+- temporary storage failure
+- malformed model output
+- internal processing failure
+
+Do not expose raw Python stack traces to API clients in production.
+
+Log enough information server-side to diagnose failures without
+logging sensitive document contents.
+
+
+# ============================================================
+# 30. AI OUTPUT VALIDATION
+# ============================================================
+
+NEVER trust raw LLM output directly.
+
+The AI may return malformed JSON, invalid values, or unexpected fields.
+
+Use Pydantic models or equivalent deterministic validation.
+
+Pipeline:
+
+LLM/AI result
+    ↓
+Parse
+    ↓
+Validate
+    ↓
+Normalize
+    ↓
+Check against requested schema
+    ↓
+Check allowed values
+    ↓
+Generate structured result
+
+If validation fails:
+
+- attempt a controlled repair/retry where appropriate
+- otherwise return an explicit processing error/isolation result
+
+Do not silently convert invalid AI output into a seemingly valid
+classification.
+
+
+# ============================================================
+# 31. ACADEMIC DOCUMENT REASONING
+# ============================================================
+
+The model prompt/system logic for document sorting should explicitly
+tell the AI:
+
+DO NOT GUESS.
+
+Use evidence from:
+- page content
+- headers
+- question numbers
+- course codes
+- visual continuity
+- neighboring pages
+- document structure
+- batch context
+
+When evidence conflicts:
+
+- identify the conflict
+- lower confidence
+- isolate when necessary
+
+When a page has no header:
+
+- inspect its relationship with surrounding pages
+- do not automatically mark it unknown
+
+When a new course header appears:
+
+- consider whether it represents a new document boundary
+- verify that preceding pages belong to the previous group
+
+When multiple possible groupings exist:
+
+- select the grouping best supported by evidence
+- if ambiguity remains significant, isolate the affected group
+
+
+# ============================================================
+# 32. DUPLICATE DETECTION
+# ============================================================
+
+Where practical, detect obvious duplicates.
+
+Potential signals:
+
+- cryptographic file hash
+- identical file content
+- identical page content
+- identical document metadata
+- repeated uploads within the same request
+
+Do not automatically delete duplicates.
+
+Return duplicate information to the caller.
+
+Example:
+
+status = "duplicate"
+
+or warning:
+
+"Possible duplicate of group_001"
+
+The final decision remains with the client/admin where appropriate.
+
+
+# ============================================================
+# 33. PROCESSING STRATEGY
+# ============================================================
+
+Do not send every raw file blindly into one enormous LLM prompt if the
+processing can be broken into sensible stages.
+
+Use a staged architecture where practical:
+
+STAGE 1
+Validate files
+
+STAGE 2
+Extract content / render pages
+
+STAGE 3
+Create page/document representations
+
+STAGE 4
+Analyze individual pages
+
+STAGE 5
+Analyze relationships between pages
+
+STAGE 6
+Create candidate document groups
+
+STAGE 7
+Extract requested metadata
+
+STAGE 8
+Validate against schema
+
+STAGE 9
+Determine classified/isolated/rejected state
+
+STAGE 10
+Generate structured response
+
+The exact implementation should be adapted to the existing model/tool
+architecture and available resources.
+
+Avoid unnecessary model calls.
+
+
+# ============================================================
+# 34. LANGCHAIN INTEGRATION
+# ============================================================
+
+The existing project uses LangChain.
+
+Integrate the new document-sorting capability with the existing
+architecture where appropriate.
+
+Do not introduce LangChain abstractions simply for the sake of using
+them.
+
+The document sorter should be a clearly defined capability/tool that
+the existing agent architecture can access if useful.
+
+However:
+
+The TACSFON API endpoint should be able to invoke the document sorting
+workflow DIRECTLY.
+
+Do not require TACSFON to send a natural-language prompt such as:
+
+"Please sort these files..."
+
+and hope the general research agent decides what to do.
+
+The API should explicitly identify:
+
+task = document_sorting
+
+This makes the integration deterministic.
+
+
+# ============================================================
+# 35. GENERAL AGENT VS DOCUMENT SORTER
+# ============================================================
+
+Keep these concepts separate:
+
+GENERAL NEBULA AGENT
+- research
+- conversations
+- memory
+- normal agent interaction
+
+DOCUMENT SORTING ENGINE
+- file processing
+- document understanding
+- grouping
+- classification
+- structured sorting
+
+The document sorter may use the same underlying LLM/model infrastructure
+and existing tools where appropriate.
+
+But do not make the entire general agent responsible for document
+sorting behavior.
+
+This separation is important for reliability.
+
+
+# ============================================================
+# 36. LONG-TERM MEMORY — EXISTING SYSTEM AUDIT
+# ============================================================
+
+The existing long-term memory system is currently unreliable and
+poorly structured.
+
+DO NOT simply delete it and replace it with an unrelated memory
+system.
+
+First inspect:
+
+- memory.py
+- nova_memory.db
+- schema
+- memory creation
+- memory update behavior
+- memory retrieval
+- memory search
+- categories
+- importance
+- user_id handling
+- duplicate memory handling
+- persistence
+- interaction with main.py
+- interaction with server.py
+- how memories are supplied back to the agent
+
+Identify the actual causes of unreliable memory behavior.
+
+Then refactor the minimum necessary components.
+
+The goal is:
+
+RELIABLE PERSISTENCE
++
+RELIABLE RETRIEVAL
++
+CLEAR STRUCTURE
++
+NO UNCONTROLLED MEMORY GROWTH
+
+
+# ============================================================
+# 37. MEMORY DATA MODEL
+# ============================================================
+
+The existing memory concept includes:
+
+- user_id
+- category
+- key
+- value
+- importance
+
+Preserve useful existing concepts unless inspection shows a better
+structure is necessary.
+
+Memory should support categories such as:
+
+- identity
+- preference
+- project
+- skill
+- instruction
+- context
+
+Do not save every conversation message as long-term memory.
+
+Long-term memory should contain information that is genuinely useful
+across future interactions.
+
+Conversation history remains separate.
+
+
+# ============================================================
+# 38. MEMORY VS HISTORY
+# ============================================================
+
+Maintain a clear distinction:
+
+CONVERSATION HISTORY
+=
+what was said during conversations.
+
+LONG-TERM MEMORY
+=
+important information extracted for future use.
+
+Do not merge the two databases into one indiscriminately.
+
+Do not treat every historical message as a memory.
+
+Do not allow repeated interactions to create unlimited duplicate
+memories.
+
+
+# ============================================================
+# 39. MEMORY RETRIEVAL
+# ============================================================
+
+Review the existing retrieval/search system.
+
+Memory retrieval should:
+
+- use user_id consistently
+- return relevant memories
+- respect category where provided
+- respect importance
+- avoid obvious duplicates
+- handle missing memories gracefully
+- fail safely if the database is unavailable
+
+If semantic/vector search is introduced, do so only if it fits the
+existing architecture and deployment constraints.
+
+Do not add unnecessary infrastructure simply because vector databases
+are popular.
+
+
+# ============================================================
+# 40. MEMORY UPDATES
+# ============================================================
+
+When new information conflicts with existing information:
+
+Do not blindly create another memory.
+
+Where appropriate:
+
+- update the existing memory
+- preserve useful history where necessary
+- avoid stale duplicate facts
+
+Example:
+
+Old:
+favorite_language = Python
+
+New:
+favorite_language = C++
+
+The system should have a defined strategy for handling updates rather
+than storing unlimited contradictory values.
+
+
+# ============================================================
+# 41. MEMORY SECURITY
+# ============================================================
+
+Never store secrets such as:
+
+- API keys
+- passwords
+- recovery answers
+- security keys
+- tokens
+
+as long-term memories.
+
+Do not allow the general memory system to accidentally capture
+environment secrets from application configuration.
+
+
+# ============================================================
+# 42. EXISTING SERVER.PY
+# ============================================================
+
+The current server.py already contains endpoints similar to:
+
+GET /
+GET /health
+POST /research
+GET /memories
+POST /memories
+DELETE /memories/{memory_id}
+DELETE /memories
+GET /conversations
+GET /conversations/{session_id}/messages
+DELETE /conversations/{session_id}
+
+These must continue working.
+
+The document sorting API should be added alongside them rather than
+replacing them.
+
+
+# ============================================================
+# 43. HEALTH ENDPOINT
+# ============================================================
+
+Update the health/root response branding from Horizon/Nova to Nebula
+where appropriate.
+
+The health endpoint should remain lightweight.
+
+Do not make /health perform a full AI model request.
+
+It should confirm that the API service itself is alive.
+
+If dependency-health checks are added, keep them separate from the
+basic liveness endpoint.
+
+
+# ============================================================
+# 44. LOGGING
+# ============================================================
+
+Improve logs where useful.
+
+Logs should help identify:
+
+- request ID
+- processing stage
+- processing duration
+- file count
+- total size
+- model/tool failures
+- validation failures
+- cleanup failures
+
+Do NOT log:
+
+- document contents
+- security keys
+- API keys
+- recovery answers
+- authentication tokens
+- sensitive extracted content unnecessarily
+
+
+# ============================================================
+# 45. REQUEST IDs
+# ============================================================
+
+Every document-sorting request should have a unique request ID.
+
+If TACSFON supplies one, preserve it.
+
+Otherwise generate one.
+
+Use it throughout:
+
+- API logs
+- processing pipeline
+- response
+- errors
+
+This will allow TACSFON to associate the Nebula response with the
+correct upload operation.
+
+
+# ============================================================
+# 46. TIMEOUTS
+# ============================================================
+
+Document analysis can take longer than normal research requests.
+
+Use appropriate configurable timeouts.
+
+Do not leave requests hanging indefinitely.
+
+If processing takes too long for the current synchronous deployment
+architecture, design the system so the architecture can later support
+background jobs without changing the conceptual API unnecessarily.
+
+For the initial implementation, prefer the simplest reliable approach
+that works within Render's deployment constraints.
+
+
+# ============================================================
+# 47. TESTING
+# ============================================================
+
+Do not finish after the application starts successfully.
+
+Create meaningful tests for the new sorting capability.
+
+At minimum test:
+
+1. PDF upload
+2. JPG upload
+3. PNG upload
+4. WebP upload
+5. DOCX upload
+6. invalid file type
+7. oversized request
+8. empty request
+9. malformed schema
+10. valid dynamic schema
+11. continuation page grouping
+12. new-document boundary detection
+13. isolated classification
+14. conflicting metadata
+15. admin-provided correction context
+16. structured response validation
+17. duplicate detection where implemented
+18. cleanup after processing
+19. API authentication
+20. existing /research endpoint
+21. existing memory endpoints
+22. existing conversation endpoints
+
+Create small controlled fixtures for document-grouping tests.
+
+For example:
+
+GROUP A
+Page 1 → EEE 306 header
+Page 2 → questions 5–6 without header
+
+GROUP B
+Page 3 → CPS 401 header
+
+Expected:
+
+Group A → EEE 306
+Group B → CPS 401
+
+
+# ============================================================
+# 48. DO NOT CREATE FAKE INTELLIGENCE
+# ============================================================
+
+Do not make the demo appear intelligent by using simplistic rules such
+as:
+
+"If filename contains CSC, classify as CSC."
+
+The actual objective is document understanding.
+
+Filename information may be used as one signal where useful, but it
+must not be the primary classification mechanism.
+
+The system must work when filenames are:
+
+- IMG_001.jpg
+- image2.png
+- scan_9382.pdf
+- WhatsApp Image 2026...
+- document.docx
+
+The content and contextual relationships matter more than filenames.
+
+
+# ============================================================
+# 49. NO TACSFON-SPECIFIC BUSINESS LOGIC IN CORE ENGINE
+# ============================================================
+
+Do NOT put logic such as:
+
+if course == "CSC 308":
+    ...
+
+if school == "School of Science":
+    ...
+
+if client == "TACSFON":
+    ...
+
+inside the generic sorting engine.
+
+Client-specific schemas belong in the request.
+
+The engine should not know who the client is unless client metadata is
+needed for logging/authentication.
+
+
+# ============================================================
+# 50. FUTURE CLIENTS
+# ============================================================
+
+The document-sorting capability should be designed so another
+application can call it with:
+
+- files
+- schema
+- allowed values
+- optional context
+
+without modifying the sorting algorithm.
+
+This is one of the primary reasons this capability is being built as
+a generic Nebula tool rather than a TACSFON-specific script.
+
+
+# ============================================================
+# 51. IMPLEMENTATION ORDER
+# ============================================================
+
+Follow this order rather than changing everything simultaneously.
+
+PHASE 1
+Audit existing project.
+
+PHASE 2
+Stabilize/repair existing memory system.
+
+PHASE 3
+Rename application-facing branding from Nova/Horizon to Nebula
+without breaking existing functionality.
+
+PHASE 4
+Design document-sorting data models and tool boundaries.
+
+PHASE 5
+Implement file validation/extraction layer.
+
+PHASE 6
+Implement page/document representation.
+
+PHASE 7
+Implement contextual page/group reasoning.
+
+PHASE 8
+Implement dynamic schema classification.
+
+PHASE 9
+Implement structured output validation.
+
+PHASE 10
+Implement FastAPI document-sorting endpoint.
+
+PHASE 11
+Implement API authentication for trusted clients.
+
+PHASE 12
+Add tests.
+
+PHASE 13
+Verify existing research/memory/history functionality.
+
+PHASE 14
+Verify Render compatibility.
+
+PHASE 15
+Document the final API contract for the TACSFON project.
+
+
+# ============================================================
+# 52. FINAL TACSFON INTEGRATION CONTRACT
+# ============================================================
+
+At the end of implementation, provide/document the exact contract
+TACSFON must use.
+
+It must specify:
+
+- endpoint
+- HTTP method
+- authentication
+- multipart field names
+- schema field
+- allowed-values field
+- additional-context field
+- request ID
+- response structure
+- error structure
+- supported file types
+- maximum request size
+- timeout expectations
+
+The TACSFON developer should be able to implement the integration
+without guessing the API contract.
+
+
+# ============================================================
+# 53. FINAL SUCCESS CRITERIA
+# ============================================================
+
+The implementation is complete only when:
+
+1. Existing Nebula functionality still works.
+2. Existing research API still works.
+3. Existing memory API still works.
+4. Existing conversation API still works.
+5. Existing frontend communication still works.
+6. Application branding is Nebula.
+7. Long-term memory is demonstrably more reliable.
+8. Generic document sorting exists as a modular capability.
+9. Sorting is driven by a dynamic schema.
+10. TACSFON's schema works without being hardcoded into the engine.
+11. PDF/JPG/JPEG/PNG/WebP/DOCX are supported.
+12. 100 MB request size is enforced.
+13. Multi-file contextual analysis works.
+14. Continuation pages can be grouped with their parent document.
+15. Document boundaries can be detected.
+16. Missing information produces isolation rather than guessing.
+17. Administrator corrections can be supplied during reprocessing.
+18. Structured Pydantic responses are returned.
+19. TACSFON can call the system through FastAPI.
+20. Server-to-server authentication exists.
+21. Secrets remain server-side.
+22. Temporary files are cleaned up.
+23. Render deployment remains viable.
+24. Existing functionality has not been unnecessarily destroyed.
+
+MOST IMPORTANT:
+
+NEBULA MUST BE A GENERAL-PURPOSE AI SYSTEM WITH A GENERIC DOCUMENT
+UNDERSTANDING/SORTING CAPABILITY.
+
+TACSFON IS THE FIRST CLIENT.
+
+DO NOT TURN NEBULA INTO A TACSFON-ONLY APPLICATION.

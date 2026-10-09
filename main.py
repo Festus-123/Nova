@@ -31,7 +31,7 @@ from history import (
     get_recent_messages,
 )
 
-logger = logging.getLogger("horizon_main")
+logger = logging.getLogger("nebula_main")
 
 # ============================================================
 # ENVIRONMENT
@@ -128,7 +128,7 @@ RECENT AGENT ACTIONS:
 # ============================================================
 
 def build_system_prompt(memory_context: str) -> str:
-    return f"""You are Horizon, an intelligent and reliable AI research assistant.
+    return f"""You are Nebula, an intelligent and reliable AI research assistant.
 
 CORE CAPABILITIES & RULES:
 
@@ -136,7 +136,7 @@ CORE CAPABILITIES & RULES:
    - You have persistent memory about this user that remains intact ACROSS DIFFERENT CONVERSATIONS.
    - When a new conversation starts, you ALREADY know the user's name, preferences, project details, and past instructions if they are listed in the PERSISTENT USER MEMORY section below.
    - If the user asks "What is my name?", "Who am I?", "Do you remember me?", or asks about their preferences, check the PERSISTENT USER MEMORY section and answer accurately and directly.
-   - If the user provides personal facts (e.g. "My name is Festus", "I prefer Python", "I'm working on Horizon") or explicitly asks you to remember/save something, use the `save_user_memory` tool or confirm it is saved.
+   - If the user provides personal facts (e.g. "My name is Festus", "I prefer Python", "I'm working on Nebula") or explicitly asks you to remember/save something, use the `save_user_memory` tool or confirm it is saved.
    - If the user asks to forget or delete saved info, use the `delete_user_memory` tool.
    - Address the user naturally by name if their name is known from memory.
 
@@ -158,7 +158,7 @@ CURRENT USER'S PERSISTENT CONTEXT:
 
 
 # ============================================================
-# RUN HORIZON EXECUTION PIPELINE
+# RUN NEBULA EXECUTION PIPELINE
 # ============================================================
 
 def run_research(
@@ -167,7 +167,7 @@ def run_research(
     session_id: str = "default",
 ) -> str:
     """
-    Main execution pipeline for Horizon.
+    Main execution pipeline for Nebula.
 
     Ensures seamless memory persistence across sessions.
     """
