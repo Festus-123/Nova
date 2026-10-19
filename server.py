@@ -1,7 +1,18 @@
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+import hmac
+import json
+import logging
+import os
+import warnings
 from typing import Optional, List, Dict, Any
+
+# The sorting endpoint's multipart field is literally named "schema" (part of
+# the client contract); pydantic warns that the name shadows BaseModel.schema.
+warnings.filterwarnings("ignore", message=r'Field name "schema', category=UserWarning)
+
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, ValidationError
 
 from main import run_research
 from memory import (
@@ -17,26 +28,138 @@ from history import (
     delete_conversation,
     delete_user_conversations,
 )
+from document_sorter import (
+    DocumentSortingEngine,
+    DocumentSortingResponse,
+    ErrorResponse,
+    SortingError,
+    SortingRequest,
+    UploadInput,
+)
+from document_sorter.config import SorterSettings
 
+
+logging.basicConfig(
+    level=os.environ.get("NEBULA_LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("nebula.api")
+
+API_VERSION = "2.0.0"
 
 app = FastAPI(
-    title="Horizon API",
-    description="Research & Long-Term Memory Agent API for Horizon",
-    version="1.1.0",
+    title="Nebula API",
+    description=(
+        "Nebula - general-purpose AI research assistant with long-term memory, "
+        "conversation history and a generic document understanding & sorting capability."
+    ),
+    version=API_VERSION,
 )
+
+
+# ============================================================
+# CORS
+# ============================================================
+# CORS only decides which browser origins may call the API; it is not
+# authentication. Server-to-server document sorting is protected by an API
+# key. Extra origins can be added with NEBULA_CORS_ORIGINS (comma-separated).
+
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://nova-flash-psi.vercel.app",
+]
+
+
+def _cors_origins() -> List[str]:
+    extra = [
+        origin.strip().rstrip("/")
+        for origin in os.environ.get("NEBULA_CORS_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
+    return list(dict.fromkeys(DEFAULT_CORS_ORIGINS + extra))
+
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "https://nova-flash-psi.vercel.app",
-        "*",
-    ],
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ============================================================
+# TRUSTED-CLIENT AUTHENTICATION (DOCUMENT SORTING)
+# ============================================================
+
+SORTING_PATH = "/sort-documents"
+SORTER_SETTINGS = SorterSettings.from_env()
+# Allowance for multipart boundaries and JSON form fields on top of file bytes.
+MULTIPART_OVERHEAD_BYTES = 4 * 1024 * 1024
+
+_sorting_engine: Optional[DocumentSortingEngine] = None
+
+
+def get_sorting_engine() -> DocumentSortingEngine:
+    global _sorting_engine
+    if _sorting_engine is None:
+        _sorting_engine = DocumentSortingEngine(settings=SORTER_SETTINGS)
+    return _sorting_engine
+
+
+def _presented_api_key(request: Request) -> Optional[str]:
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return request.headers.get("x-api-key")
+
+
+def _error_response(
+    status_code: int,
+    code: str,
+    message: str,
+    request_id: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None,
+) -> JSONResponse:
+    body = ErrorResponse(
+        request_id=request_id,
+        error={"code": code, "message": message, "details": details or {}},
+    )
+    return JSONResponse(status_code=status_code, content=body.model_dump())
+
+
+@app.middleware("http")
+async def guard_document_sorting(request: Request, call_next):
+    """Authenticate and size-check sorting requests before the body is read."""
+    if request.method == "POST" and request.url.path.rstrip("/") == SORTING_PATH:
+        expected = os.environ.get("NEBULA_API_KEY", "")
+        if not expected:
+            logger.error("Document sorting called but NEBULA_API_KEY is not configured")
+            return _error_response(503, "auth_not_configured", "Document sorting is not enabled on this server.")
+
+        presented = _presented_api_key(request) or ""
+        if not hmac.compare_digest(presented.encode(), expected.encode()):
+            logger.warning("Rejected document-sorting request: invalid or missing API key")
+            return _error_response(401, "unauthorized", "Missing or invalid API key.")
+
+        length = request.headers.get("content-length")
+        limit = SORTER_SETTINGS.max_request_bytes + MULTIPART_OVERHEAD_BYTES
+        if length and length.isdigit() and int(length) > limit:
+            return _error_response(
+                413,
+                "request_too_large",
+                f"Request exceeds the maximum size of {SORTER_SETTINGS.max_request_bytes // (1024 * 1024)} MB.",
+                details={"max_bytes": SORTER_SETTINGS.max_request_bytes},
+            )
+    return await call_next(request)
+
+
+@app.exception_handler(SortingError)
+async def sorting_error_handler(request: Request, exc: SortingError):
+    request_id = getattr(request.state, "sorting_request_id", None)
+    logger.warning("request_id=%s sorting_error code=%s", request_id, exc.code)
+    return _error_response(exc.http_status, exc.code, exc.message, request_id, exc.details)
 
 
 # ============================================================
@@ -70,15 +193,42 @@ class MemoryCreateRequest(BaseModel):
 @app.get("/")
 def home():
     return {
-        "status": "Horizon Agent Running",
-        "version": "1.1.0",
+        "status": "Nebula Agent Running",
+        "service": "nebula",
+        "version": API_VERSION,
     }
 
 
 @app.get("/health")
 def health():
+    """Liveness only: confirms the API process is up. Makes no model calls."""
     return {
         "status": "ok",
+        "service": "nebula",
+    }
+
+
+@app.get("/health/ready")
+def readiness():
+    """Dependency/configuration readiness. Still makes no model calls."""
+    from document_sorter.extraction import ocr_available
+
+    try:
+        import pypdfium2  # noqa: F401
+        pdf_rendering = True
+    except Exception:
+        pdf_rendering = False
+
+    checks = {
+        "llm_configured": bool(os.environ.get("OPENAI_API_KEY")),
+        "document_sorting_auth_configured": bool(os.environ.get("NEBULA_API_KEY")),
+        "pdf_rendering": pdf_rendering,
+        "ocr": ocr_available(),
+    }
+    return {
+        "status": "ready" if checks["llm_configured"] else "degraded",
+        "service": "nebula",
+        "checks": checks,
     }
 
 
@@ -114,10 +264,10 @@ def research(request: ResearchRequest):
         }
 
     except Exception as e:
-        print("Horizon Error:", e)
+        logger.exception("Nebula research request failed")
         raise HTTPException(
             status_code=500,
-            detail=f"Horizon encountered an error: {str(e)}",
+            detail=f"Nebula encountered an error: {type(e).__name__}",
         )
 
 
@@ -136,6 +286,8 @@ def list_memories(
 
     if q and q.strip():
         memories = search_memories(user_id=clean_user, query=q.strip())
+        if category:
+            memories = [m for m in memories if m["category"] == category.strip().lower()]
     else:
         memories = get_memories(user_id=clean_user, minimum_importance=1, category=category)
 
@@ -151,13 +303,16 @@ def create_memory(item: MemoryCreateRequest):
     """Explicitly add or update a long-term memory item."""
     clean_user = (item.user_id or "default").strip() or "default"
 
-    saved = save_memory(
-        user_id=clean_user,
-        category=item.category,
-        key=item.key,
-        value=item.value,
-        importance=item.importance,
-    )
+    try:
+        saved = save_memory(
+            user_id=clean_user,
+            category=item.category,
+            key=item.key,
+            value=item.value,
+            importance=item.importance,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     return {
         "status": "success",
@@ -220,3 +375,118 @@ def delete_session(session_id: str, user_id: str = Query("default")):
         "status": "success",
         "deleted_session_id": session_id,
     }
+
+
+# ============================================================
+# DOCUMENT SORTING ENDPOINT (TRUSTED SERVER-TO-SERVER CLIENTS)
+# ============================================================
+
+_ERROR_CODE_BY_FIELD = {
+    "schema": "malformed_schema",
+    "required_fields": "malformed_schema",
+    "field_descriptions": "malformed_schema",
+    "allowed_values": "invalid_allowed_values",
+    "additional_context": "invalid_additional_context",
+    "previous_result": "invalid_previous_result",
+    "request_id": "invalid_request_id",
+}
+
+
+def _parse_json_field(name: str, raw: Optional[str], expected_type, required: bool = False):
+    if raw is None or not raw.strip():
+        if required:
+            raise SortingError(
+                f"The '{name}' form field is required.",
+                code="missing_schema" if name == "schema" else "invalid_request",
+                http_status=422,
+            )
+        return None
+    error_code = _ERROR_CODE_BY_FIELD.get(name, "invalid_request")
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        raise SortingError(f"The '{name}' form field must be valid JSON.", code=error_code, http_status=422)
+    if not isinstance(value, expected_type):
+        kind = "array" if expected_type is list else "object"
+        raise SortingError(f"The '{name}' form field must be a JSON {kind}.", code=error_code, http_status=422)
+    return value
+
+
+@app.post(
+    SORTING_PATH,
+    response_model=DocumentSortingResponse,
+    response_model_by_alias=True,
+    responses={
+        code: {"model": ErrorResponse}
+        for code in (400, 401, 413, 422, 500, 502, 503, 504)
+    },
+    tags=["document-sorting"],
+)
+def sort_documents_endpoint(
+    request: Request,
+    files: List[UploadFile] = File(default=[]),
+    schema_json: Optional[str] = Form(default=None, alias="schema", description='JSON array of field names, e.g. ["category","year"]'),
+    allowed_values: Optional[str] = Form(default=None, description="JSON object: field -> permitted values"),
+    additional_context: Optional[str] = Form(default=None, description="JSON object of externally supplied values"),
+    required_fields: Optional[str] = Form(default=None, description="JSON array; defaults to every schema field"),
+    field_descriptions: Optional[str] = Form(default=None, description="JSON object: field -> what the field means"),
+    previous_result: Optional[str] = Form(default=None, description="JSON object: earlier result, for reprocessing"),
+    request_id: Optional[str] = Form(default=None),
+    task: Optional[str] = Form(default="document_sorting"),
+):
+    """
+    Group, classify and validate a batch of documents against a client-supplied
+    schema. Authenticate with `Authorization: Bearer <NEBULA_API_KEY>` (or the
+    `X-API-Key` header). Full contract: docs/DOCUMENT_SORTING_API.md.
+    """
+    supplied_id = (request_id or "").strip() or None
+    request.state.sorting_request_id = supplied_id
+
+    if task and task.strip() != "document_sorting":
+        raise SortingError(
+            "Unsupported task; this endpoint only performs 'document_sorting'.",
+            code="unsupported_task",
+            http_status=422,
+        )
+
+    payload = {
+        "task": "document_sorting",
+        "request_id": supplied_id,
+        "schema": _parse_json_field("schema", schema_json, list, required=True),
+        "required_fields": _parse_json_field("required_fields", required_fields, list),
+        "field_descriptions": _parse_json_field("field_descriptions", field_descriptions, dict) or {},
+        "allowed_values": _parse_json_field("allowed_values", allowed_values, dict),
+        "additional_context": _parse_json_field("additional_context", additional_context, dict),
+        "previous_result": _parse_json_field("previous_result", previous_result, dict),
+    }
+    try:
+        sorting_request = SortingRequest.model_validate(payload)
+    except ValidationError as exc:
+        errors = exc.errors(include_input=False, include_url=False)
+        problems = [
+            {"field": ".".join(str(p) for p in err["loc"]) or "request", "message": err["msg"]}
+            for err in errors
+        ]
+        known_codes = set(_ERROR_CODE_BY_FIELD.values())
+        code = next((err["type"] for err in errors if err["type"] in known_codes), None)
+        if code is None:
+            first_field = str(errors[0]["loc"][0]) if errors and errors[0]["loc"] else ""
+            code = _ERROR_CODE_BY_FIELD.get(first_field, "invalid_request")
+        raise SortingError("The sorting request is invalid.", code=code, http_status=422,
+                           details={"errors": problems})
+
+    engine = get_sorting_engine()
+    sorting_request.request_id = sorting_request.request_id or engine.new_request_id()
+    request.state.sorting_request_id = sorting_request.request_id
+
+    uploads = [
+        UploadInput(filename=upload.filename or "", stream=upload.file, content_type=upload.content_type)
+        for upload in files
+    ]
+    try:
+        return engine.sort(sorting_request, uploads)
+    except SortingError:
+        raise
+    except Exception:
+        logger.exception("request_id=%s sorting_internal_error", sorting_request.request_id)
+        raise SortingError("Internal error while processing documents.", code="internal_error", http_status=500)

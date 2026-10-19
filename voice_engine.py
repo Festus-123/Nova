@@ -25,10 +25,10 @@ except ImportError:
 
 from memory import get_memories, get_memory
 
-logger = logging.getLogger("horizon_voice")
+logger = logging.getLogger("nebula_voice")
 
 
-class HorizonWakeWordDetector:
+class NebulaWakeWordDetector:
     """Lightweight local wake-word detection backed by Vosk."""
 
     MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
@@ -37,7 +37,7 @@ class HorizonWakeWordDetector:
     def __init__(self, model_dir: Optional[str] = None, wake_phrases: Optional[Tuple[str, ...]] = None):
         base_dir = model_dir or os.path.join(os.path.expanduser("~"), ".horizon", "vosk")
         self.model_dir = os.path.join(base_dir, self.MODEL_DIR_NAME)
-        self.wake_phrases = tuple(wake_phrases or ("hey horizon", "horizon"))
+        self.wake_phrases = tuple(wake_phrases or ("hey nebula", "nebula", "hey horizon"))
         self.model = None
         self.enabled = True
         self._callback = None
@@ -154,7 +154,7 @@ class HorizonWakeWordDetector:
                 pass
 
 
-class HorizonTTS:
+class NebulaTTS:
     """Crisp, natural Text-To-Speech engine using pyttsx3."""
 
     def __init__(self, rate: int = 185, volume: float = 1.0):
@@ -229,7 +229,7 @@ class HorizonTTS:
         return False
 
 
-class HorizonSTT:
+class NebulaSTT:
     """Speech recognition engine with ambient noise adjustment and fallback resilience."""
 
     def __init__(self):
@@ -299,7 +299,7 @@ def generate_daily_briefing(user_id: str = "default") -> Tuple[str, str]:
     if projects:
         spoken_parts.append(f"Your active project is {projects[0]}.")
 
-    spoken_parts.append("Horizon systems are online and ready for your command.")
+    spoken_parts.append("Nebula systems are online and ready for your command.")
     spoken_text = " ".join(spoken_parts)
 
     visual_lines = [
@@ -315,7 +315,13 @@ def generate_daily_briefing(user_id: str = "default") -> Tuple[str, str]:
     if preferences:
         visual_lines.append(f"⚙️ **Preferences:** {', '.join(preferences[:2])}")
 
-    visual_lines.append("\n*Horizon desktop voice interface is fully armed and listening.*")
+    visual_lines.append("\n*Nebula desktop voice interface is fully armed and listening.*")
     visual_text = "\n".join(visual_lines)
 
     return spoken_text, visual_text
+
+
+# Backwards-compatible names from the pre-Nebula (Horizon) release.
+HorizonWakeWordDetector = NebulaWakeWordDetector
+HorizonTTS = NebulaTTS
+HorizonSTT = NebulaSTT

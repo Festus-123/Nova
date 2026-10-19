@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import shutil
 import logging
@@ -13,8 +14,10 @@ logger = logging.getLogger("nebula_history")
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-LEGACY_DB_PATH = BASE_DIR / "nova_history.db"
-DB_PATH = BASE_DIR / "nebula_history.db"
+# See memory.py: NEBULA_DATA_DIR points the databases at a persistent disk.
+DATA_DIR = Path(os.environ.get("NEBULA_DATA_DIR") or BASE_DIR)
+LEGACY_DB_PATH = DATA_DIR / "nova_history.db"
+DB_PATH = DATA_DIR / "nebula_history.db"
 
 
 def _migrate_legacy_db_if_needed():
@@ -38,6 +41,7 @@ def get_connection():
     """
     _migrate_legacy_db_if_needed()
     target_path = DB_PATH if DB_PATH.exists() else (LEGACY_DB_PATH if LEGACY_DB_PATH.exists() else DB_PATH)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(target_path, timeout=30.0)
     conn.row_factory = sqlite3.Row

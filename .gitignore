@@ -1,6 +1,13 @@
 venv*
 .env*
-_pycache_
+__pycache__/
+*.pyc
+.pytest_cache/
+# Local databases hold user memories and conversations: never commit them.
 nova_memory.db
 nova_history.db
+nebula_memory.db
+nebula_history.db
+*.db-wal
+*.db-shm
 .txt*

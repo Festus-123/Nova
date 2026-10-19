@@ -10,3 +10,22 @@
 
 ⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 166h28m13s.
 Error ID: f4d23ce4-c766-40a7-aa86-1f4b89d3ab3c-102
+
+==================== STATUS (Claude Code session, 2026-10-19) ====================
+instruction.txt phases 1-15: DONE.
+- Memory hardening (memory.py): canonical categories, value-level dedup, legacy
+  synonym consolidation at start-up, per-user caps, bounded actions log, stronger
+  secret filtering, ranked OR search, NEBULA_DATA_DIR. main.py survives memory outage.
+- Branding: Nebula in API title/root/health/errors, desktop + voice modules
+  (Horizon* names kept as aliases; ~/.horizon/vosk model path unchanged).
+- document_sorter/ rebuilt (old analyzer.py/extractor.py drafts removed: they
+  hardcoded TACSFON fields and used substring matching). Modules: config, errors,
+  models, ingestion, file_types, extraction, pages, ai, classification, filenames,
+  engine, tool.
+- POST /sort-documents (server.py) with NEBULA_API_KEY auth, 100 MB limit,
+  structured errors; GET /health/ready. CORS wildcard removed (NEBULA_CORS_ORIGINS).
+- Tests: tests/ (69 offline, 3 live behind NEBULA_LIVE_TESTS=1, all passing).
+- Docs: docs/DOCUMENT_SORTING_API.md (TACSFON contract), docs/DEPLOYMENT.md.
+- requirement.txt is server-only; voice deps -> requirements-desktop.txt.
+- nebula_*.db and __pycache__ untracked from git (files kept on disk).
+Nothing committed yet.

@@ -1,0 +1,7 @@
+# Local desktop voice agent only (desktop_agent.py / voice_engine.py).
+# Not needed on the Render API server; pyaudio needs PortAudio system headers.
+-r requirement.txt
+SpeechRecognition
+pyttsx3
+pyaudio
+vosk

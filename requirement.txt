@@ -8,13 +8,11 @@ pydantic
 ddgs
 uvicorn
 fastapi
+requests
 pytesseract
 pillow
 rich
-SpeechRecognition
-pyttsx3
-pyaudio
-vosk
 pypdf
+pypdfium2
 python-docx
 python-multipart

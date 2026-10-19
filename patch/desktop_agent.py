@@ -13,7 +13,7 @@ from rich.align import Align
 
 from main import run_research
 from memory import get_memory, get_memories, set_current_user_id
-from patch.voice_engine import HorizonSTT, HorizonTTS, HorizonWakeWordDetector, generate_daily_briefing
+from patch.voice_engine import NebulaSTT, NebulaTTS, NebulaWakeWordDetector, generate_daily_briefing
 
 logging.basicConfig(level=logging.WARNING)
 console = Console()
@@ -28,13 +28,13 @@ MUTED_SLATE = "#5C677D"
 ACCENT_CYAN = "#00D2FF"
 
 
-class HorizonDesktopAgent:
+class NebulaDesktopAgent:
     def __init__(self, user_id: str = "default"):
         self.user_id = user_id
         self.session_id = f"desktop_{uuid.uuid4().hex[:8]}"
-        self.tts = HorizonTTS()
-        self.stt = HorizonSTT()
-        self.wake_word_detector = HorizonWakeWordDetector()
+        self.tts = NebulaTTS()
+        self.stt = NebulaSTT()
+        self.wake_word_detector = NebulaWakeWordDetector()
         self.wake_word_enabled = True
         self.current_state = "IDLE"
         self.trajectory_logs = []
@@ -80,7 +80,7 @@ class HorizonDesktopAgent:
             user_name = name_mem["value"]
 
         mic_status = "[bold green]MIC DETECTED[/bold green]" if self.stt.has_microphone else "[bold red]NO MIC[/bold red]"
-        wake_label = "[bold green]🎙️ WAKE-WORD ACTIVE ('Hey Horizon')[/bold green]" if self.wake_word_enabled else "[bold red]🔇 WAKE-WORD MUTED[/bold red]"
+        wake_label = "[bold green]🎙️ WAKE-WORD ACTIVE ('Hey Nebula')[/bold green]" if self.wake_word_enabled else "[bold red]🔇 WAKE-WORD MUTED[/bold red]"
         state_label = {
             "IDLE": f"[bold {MUTED_SLATE}]● STANDBY[/bold {MUTED_SLATE}]",
             "LISTENING": f"[bold {AMBER}]🎙️ LISTENING[/bold {AMBER}]",
@@ -141,12 +141,12 @@ class HorizonDesktopAgent:
         if self.wake_word_detector.available:
             self.wake_word_detector.start(self.handle_wake_word_detected)
         else:
-            self.log_trajectory("Wake-word listener unavailable. Install Vosk and the model to enable 'Hey Horizon'.")
+            self.log_trajectory("Wake-word listener unavailable. Install Vosk and the model to enable 'Hey Nebula'.")
 
     def handle_wake_word_detected(self):
         if not self.wake_word_enabled:
             return
-        self.log_trajectory("Wake word detected: 'Hey Horizon'")
+        self.log_trajectory("Wake word detected: 'Hey Nebula'")
         self.set_state("LISTENING")
         self.last_response = "Wake word detected. Listening for your command..."
         self.display_dashboard()
@@ -186,7 +186,7 @@ class HorizonDesktopAgent:
         self.last_response = f"User query ({source_label}): {clean_query}"
         self.set_state("THINKING")
         self.log_trajectory(f"Query received: '{clean_query[:40]}...'")
-        self.log_trajectory("Retrieving memory and invoking Horizon research agent...")
+        self.log_trajectory("Retrieving memory and invoking Nebula research agent...")
         self.display_dashboard()
 
         try:
@@ -196,7 +196,7 @@ class HorizonDesktopAgent:
                 session_id=self.session_id,
             )
             self.last_response = response
-            self.log_trajectory("Horizon response generated successfully.")
+            self.log_trajectory("Nebula response generated successfully.")
             self.set_state("SPEAKING")
             self.log_trajectory("Synthesizing audio response via TTS...")
             self.display_dashboard()
@@ -296,14 +296,14 @@ class HorizonDesktopAgent:
                     elif choice == "M":
                         self.toggle_wake_word_listener()
                     elif choice == "Q" or choice == "EXIT":
-                        self.last_response = "Horizon powering down. Have a productive day."
+                        self.last_response = "Nebula powering down. Have a productive day."
                         self.display_dashboard()
-                        self.tts.speak("Horizon powering down. Have a productive day.")
+                        self.tts.speak("Nebula powering down. Have a productive day.")
                         break
                     else:
                         self.process_query(choice, from_voice=False)
                 except (KeyboardInterrupt, EOFError):
-                    self.last_response = "Horizon desktop agent shutting down."
+                    self.last_response = "Nebula desktop agent shutting down."
                     self.display_dashboard()
                     break
 
@@ -316,9 +316,13 @@ def main():
     if len(sys.argv) > 1:
         user_id = sys.argv[1]
 
-    agent = HorizonDesktopAgent(user_id=user_id)
+    agent = NebulaDesktopAgent(user_id=user_id)
     agent.run()
 
 
 if __name__ == "__main__":
     main()
+
+
+# Backwards-compatible name from the pre-Nebula (Horizon) release.
+HorizonDesktopAgent = NebulaDesktopAgent

@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import contextvars
 import logging
@@ -35,8 +36,18 @@ def set_current_user_id(user_id: str) -> None:
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-LEGACY_DB_PATH = BASE_DIR / "nova_memory.db"
-DB_PATH = BASE_DIR / "nebula_memory.db"
+# NEBULA_DATA_DIR lets a deployment point the databases at a persistent disk
+# (e.g. a Render disk mount). Defaults to the project directory.
+DATA_DIR = Path(os.environ.get("NEBULA_DATA_DIR") or BASE_DIR)
+LEGACY_DB_PATH = DATA_DIR / "nova_memory.db"
+DB_PATH = DATA_DIR / "nebula_memory.db"
+
+# Upper bound on stored memories per user; the least important / stalest
+# entries are evicted beyond this so memory cannot grow without limit.
+MAX_MEMORIES_PER_USER = int(os.environ.get("NEBULA_MAX_MEMORIES_PER_USER", "200"))
+
+# Only the most recent agent actions per user are kept.
+MAX_ACTIONS_PER_USER = int(os.environ.get("NEBULA_MAX_ACTIONS_PER_USER", "50"))
 
 
 def _migrate_legacy_db_if_needed():
@@ -120,6 +131,7 @@ def get_connection():
     """
     _migrate_legacy_db_if_needed()
     target_path = DB_PATH if DB_PATH.exists() else (LEGACY_DB_PATH if LEGACY_DB_PATH.exists() else DB_PATH)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(target_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
@@ -204,6 +216,8 @@ def initialize_memory():
     conn.commit()
     conn.close()
 
+    _consolidate_legacy_duplicates()
+
 
 # ============================================================
 # CANONICAL CATEGORY & KEY NORMALIZATION
@@ -271,25 +285,56 @@ SYNONYM_CLEANUP = {
     ],
 }
 
+ALLOWED_CATEGORIES = {
+    "identity",
+    "preference",
+    "project",
+    "skill",
+    "goal",
+    "instruction",
+    "context",
+}
+
 SECRET_PATTERNS = [
     re.compile(r"sk-[a-zA-Z0-9_\-]{20,}", re.IGNORECASE),
-    re.compile(r"(?:api[_-]?key|secret[_-]?key|access[_-]?token|password|auth[_-]?token)[\s:=]+['\"]?([a-zA-Z0-9_\-\.]{8,})", re.IGNORECASE),
+    re.compile(r"(?:api[_-]?key|secret[_-]?key|access[_-]?token|password|passwd|passcode|auth[_-]?token)[\s:=]+['\"]?([a-zA-Z0-9_\-\.]{8,})", re.IGNORECASE),
     re.compile(r"bearer\s+[a-zA-Z0-9_\-\.]{20,}", re.IGNORECASE),
+    re.compile(r"\b(?:password|passwd|passcode|pin|otp|recovery\s+(?:code|key|phrase|answer)|security\s+(?:key|answer)|seed\s+phrase)\b\s*(?:is|was|=|:)", re.IGNORECASE),
+    re.compile(r"\b(?:ghp|gho|github_pat|xox[abp]|AKIA)[A-Za-z0-9_\-]{10,}"),
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
 ]
+
+SECRET_KEY_NAMES = re.compile(
+    r"(password|passwd|passcode|secret|token|api_?key|private_?key|recovery|security_?(answer|key)|credential|^pin$|_pin$|otp)",
+    re.IGNORECASE,
+)
 
 
 def contains_secret(text: str) -> bool:
     """Detect presence of API keys, tokens, or passwords."""
+    if not text:
+        return False
     for pattern in SECRET_PATTERNS:
         if pattern.search(text):
             return True
     return False
 
 
+def is_secret_key(key: str) -> bool:
+    """Detect memory keys that name a credential (e.g. 'wifi_password')."""
+    return bool(key and SECRET_KEY_NAMES.search(key))
+
+
 def normalize_category(category: str) -> str:
-    """Map categories to canonical names."""
-    clean = (category or "context").strip().lower()
-    return CATEGORY_MAP.get(clean, clean)
+    """Map categories to one of the canonical names; unknown ones become 'context'."""
+    clean = (category or "context").strip().lower().replace(" ", "_").replace("-", "_")
+    clean = CATEGORY_MAP.get(clean, clean)
+    return clean if clean in ALLOWED_CATEGORIES else "context"
+
+
+def _normalize_value(value: str) -> str:
+    """Comparison form of a memory value (case/whitespace/punctuation-insensitive)."""
+    return re.sub(r"[\s\.\!]+", " ", (value or "").strip().lower()).strip()
 
 
 def normalize_key(category: str, key: str) -> str:
@@ -331,74 +376,91 @@ def save_memory(
     clean_value = value.strip()
 
     # Secret protection
-    if contains_secret(clean_value) or contains_secret(key):
+    if contains_secret(clean_value) or contains_secret(key) or is_secret_key(key):
         raise ValueError("Security violation: Secrets or API keys cannot be stored in long-term memory.")
 
     category = normalize_category(category)
     key = normalize_key(category, key)
-    importance = max(1, min(10, importance))
+    importance = max(1, min(10, int(importance)))
 
     conn = get_connection()
     now = datetime.now().isoformat()
 
-    # Conflict resolution: Clean up synonymous keys
-    cleanup_targets = SYNONYM_CLEANUP.get((category, key), [])
-    for c_cat, c_key in cleanup_targets:
-        conn.execute(
+    try:
+        # Conflict resolution: Clean up synonymous keys
+        cleanup_targets = SYNONYM_CLEANUP.get((category, key), [])
+        for c_cat, c_key in cleanup_targets:
+            conn.execute(
+                """
+                DELETE FROM memories
+                WHERE user_id = ?
+                AND category = ?
+                AND key = ?
+                """,
+                (user_id, c_cat, c_key),
+            )
+
+        # Update strategy: one value per (user_id, category, key);
+        # the newest value replaces the old one (last write wins).
+        existing = conn.execute(
             """
-            DELETE FROM memories
+            SELECT id, key, value, importance
+            FROM memories
             WHERE user_id = ?
             AND category = ?
             AND key = ?
             """,
-            (user_id, c_cat, c_key),
-        )
+            (user_id, category, key),
+        ).fetchone()
 
-    # Check if exact user_id, category, key exists
-    existing = conn.execute(
-        """
-        SELECT id, value, importance
-        FROM memories
-        WHERE user_id = ?
-        AND category = ?
-        AND key = ?
-        """,
-        (user_id, category, key),
-    ).fetchone()
+        if not existing:
+            # The same fact stored under a different key is a duplicate;
+            # refresh that row instead of adding another one.
+            target_value = _normalize_value(clean_value)
+            for row in conn.execute(
+                "SELECT id, key, value, importance FROM memories WHERE user_id = ? AND category = ?",
+                (user_id, category),
+            ).fetchall():
+                if _normalize_value(row["value"]) == target_value:
+                    existing = row
+                    key = row["key"]
+                    break
 
-    if existing:
-        # Avoid unnecessary writes if identical
-        memory_id = existing["id"]
-        conn.execute(
-            """
-            UPDATE memories
-            SET value = ?,
-                importance = ?,
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (clean_value, max(importance, existing["importance"]), now, memory_id),
-        )
-    else:
-        cursor = conn.execute(
-            """
-            INSERT INTO memories (
-                user_id,
-                category,
-                key,
-                value,
-                importance,
-                created_at,
-                updated_at
+        if existing:
+            memory_id = existing["id"]
+            importance = max(importance, existing["importance"])
+            conn.execute(
+                """
+                UPDATE memories
+                SET value = ?,
+                    importance = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (clean_value, importance, now, memory_id),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (user_id, category, key, clean_value, importance, now, now),
-        )
-        memory_id = cursor.lastrowid
+        else:
+            cursor = conn.execute(
+                """
+                INSERT INTO memories (
+                    user_id,
+                    category,
+                    key,
+                    value,
+                    importance,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, category, key, clean_value, importance, now, now),
+            )
+            memory_id = cursor.lastrowid
+            _enforce_memory_cap(conn, user_id, keep_id=memory_id)
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
 
     return {
         "id": memory_id,
@@ -409,6 +471,71 @@ def save_memory(
         "importance": importance,
         "updated_at": now,
     }
+
+
+def _enforce_memory_cap(conn, user_id: str, keep_id: int) -> None:
+    """Evict the least important, least recently updated memories beyond the per-user cap."""
+    count = conn.execute(
+        "SELECT COUNT(*) FROM memories WHERE user_id = ?", (user_id,)
+    ).fetchone()[0]
+    overflow = count - MAX_MEMORIES_PER_USER
+    if overflow <= 0:
+        return
+    conn.execute(
+        """
+        DELETE FROM memories
+        WHERE id IN (
+            SELECT id FROM memories
+            WHERE user_id = ? AND id != ?
+            ORDER BY importance ASC, updated_at ASC
+            LIMIT ?
+        )
+        """,
+        (user_id, keep_id, overflow),
+    )
+    logger.info("Evicted %d low-priority memories for a user over the cap", overflow)
+
+
+def _consolidate_legacy_duplicates() -> None:
+    """
+    Re-key rows written before canonical normalization existed
+    (e.g. 'coding_language' next to 'favorite_language'), keeping the
+    most recently updated value. Idempotent; safe to run at every start.
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, user_id, category, key, updated_at FROM memories ORDER BY updated_at DESC"
+        ).fetchall()
+        merged = 0
+        for row in rows:
+            canonical_cat = normalize_category(row["category"])
+            canonical_key = normalize_key(canonical_cat, row["key"])
+            if (canonical_cat, canonical_key) == (row["category"], row["key"]):
+                continue
+            if not conn.execute("SELECT 1 FROM memories WHERE id = ?", (row["id"],)).fetchone():
+                continue
+            clash = conn.execute(
+                "SELECT id, updated_at FROM memories WHERE user_id = ? AND category = ? AND key = ?",
+                (row["user_id"], canonical_cat, canonical_key),
+            ).fetchone()
+            if clash and clash["updated_at"] >= row["updated_at"]:
+                conn.execute("DELETE FROM memories WHERE id = ?", (row["id"],))
+            else:
+                if clash:
+                    conn.execute("DELETE FROM memories WHERE id = ?", (clash["id"],))
+                conn.execute(
+                    "UPDATE memories SET category = ?, key = ? WHERE id = ?",
+                    (canonical_cat, canonical_key, row["id"]),
+                )
+            merged += 1
+        conn.commit()
+        if merged:
+            logger.info("Consolidated %d legacy memory rows into canonical keys", merged)
+    except Exception as e:
+        logger.warning("Memory consolidation skipped: %s", e)
+    finally:
+        conn.close()
 
 
 # ============================================================
@@ -543,43 +670,52 @@ def search_memories(
     if not query or not query.strip():
         return get_memories(user_id=user_id, limit=limit)
 
-    terms = [t.strip() for t in query.strip().split() if t.strip()]
+    terms = [
+        t for t in re.findall(r"[a-z0-9_+#]+", query.lower())
+        if len(t) > 1 and t not in SEARCH_STOPWORDS
+    ]
     if not terms:
-        return []
+        return get_memories(user_id=user_id, limit=limit)
 
     conn = get_connection()
-    # Build dynamic search clauses for terms
-    clauses = []
-    params = [user_id]
-    for term in terms:
-        pattern = f"%{term}%"
-        clauses.append("(key LIKE ? OR value LIKE ? OR category LIKE ?)")
-        params.extend([pattern, pattern, pattern])
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                id,
+                user_id,
+                category,
+                key,
+                value,
+                importance,
+                created_at,
+                updated_at
+            FROM memories
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        ).fetchall()
+    finally:
+        conn.close()
 
-    where_sql = " AND ".join(clauses)
-    params.append(limit)
+    # Rank by how many query terms appear (any term may match), then by
+    # importance and recency. Keys are also compared with underscores as spaces.
+    scored = []
+    for row in rows:
+        haystack = f"{row['category']} {row['key']} {row['key'].replace('_', ' ')} {row['value']}".lower()
+        hits = sum(1 for term in terms if term in haystack)
+        if hits:
+            scored.append((hits, row["importance"], row["updated_at"], dict(row)))
 
-    query_sql = f"""
-        SELECT
-            id,
-            user_id,
-            category,
-            key,
-            value,
-            importance,
-            created_at,
-            updated_at
-        FROM memories
-        WHERE user_id = ?
-        AND ({where_sql})
-        ORDER BY importance DESC, updated_at DESC
-        LIMIT ?
-    """
+    scored.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+    return [item[3] for item in scored[:limit]]
 
-    rows = conn.execute(query_sql, params).fetchall()
-    conn.close()
 
-    return [dict(row) for row in rows]
+SEARCH_STOPWORDS = {
+    "the", "a", "an", "my", "me", "is", "are", "was", "what", "whats",
+    "who", "do", "does", "you", "your", "about", "of", "to", "in", "on",
+    "and", "or", "for", "remember", "know", "tell",
+}
 
 
 # ============================================================
@@ -753,6 +889,19 @@ def save_action(
             datetime.now().isoformat(),
         ),
     )
+    conn.execute(
+        """
+        DELETE FROM actions
+        WHERE user_id = ?
+        AND id NOT IN (
+            SELECT id FROM actions
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+        )
+        """,
+        (user_id, user_id, MAX_ACTIONS_PER_USER),
+    )
     conn.commit()
     conn.close()
 
@@ -894,7 +1043,7 @@ ASSISTANT'S RESPONSE:
                 continue
 
             # Skip secrets
-            if contains_secret(memory.value) or contains_secret(memory.key):
+            if contains_secret(memory.value) or contains_secret(memory.key) or is_secret_key(memory.key):
                 continue
 
             try:

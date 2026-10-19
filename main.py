@@ -1,4 +1,5 @@
 import logging
+import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
@@ -14,6 +15,7 @@ from tools import (
     list_user_memories,
     delete_user_memory,
 )
+from document_sorter.tool import sort_documents
 
 from memory import (
     initialize_memory,
@@ -62,6 +64,7 @@ tools = [
     search_user_memory,
     list_user_memories,
     delete_user_memory,
+    sort_documents,
 ]
 
 
@@ -69,9 +72,13 @@ tools = [
 # LLM
 # ============================================================
 
+# Defaults preserve the existing deployment; override through env if needed.
+NEBULA_MODEL = os.environ.get("NEBULA_MODEL", "gpt-5.4-nano")
+NEBULA_LLM_BASE_URL = os.environ.get("NEBULA_LLM_BASE_URL", "https://www.routeapi.ai/v1")
+
 llm = ChatOpenAI(
-    model="gpt-5.4-nano",
-    base_url="https://www.routeapi.ai/v1",
+    model=NEBULA_MODEL,
+    base_url=NEBULA_LLM_BASE_URL,
     temperature=0.3,
 )
 
@@ -95,22 +102,26 @@ def build_memory_context(user_id: str) -> str:
     Retrieve and format long-term memories for this user
     so they persist across every conversation session.
     """
-    memories = get_memories(
-        user_id=user_id,
-        minimum_importance=1,
-        limit=50,
-    )
-
-    actions = get_recent_actions(
-        user_id=user_id,
-        limit=5,
-    )
+    try:
+        memories = get_memories(
+            user_id=user_id,
+            minimum_importance=1,
+            limit=50,
+        )
+        actions = get_recent_actions(
+            user_id=user_id,
+            limit=3,
+        )
+    except Exception as e:
+        # Memory must never take the agent down; answer without it.
+        logger.warning(f"Long-term memory unavailable: {e}")
+        return "PERSISTENT USER MEMORY: unavailable for this request."
 
     formatted_memories = format_memories_for_prompt(memories)
 
     if actions:
         action_text = "\n".join(
-            f"- {action['action']}: {action['result']}"
+            f"- {action['action']}: {(action['result'] or '')[:200]}"
             for action in actions
         )
     else:
@@ -144,6 +155,7 @@ CORE CAPABILITIES & RULES:
    - Use `web_search` or `wikipedia_search` when fresh information or factual verification is needed.
    - Use `save_report` / `read_report` for saving long markdown reports to files.
    - Use `ocr_image_scan` to read text or extract target data from images.
+   - Use `sort_documents` to group and classify local document files by a metadata schema.
    - Never fabricate tool results or claims of tool usage.
 
 3. ACCURACY & CONVERSATION STYLE:
@@ -229,11 +241,14 @@ def run_research(
     )
 
     # 8. RECORD ACTION
-    save_action(
-        user_id=clean_user_id,
-        action="agent_response",
-        result=response,
-    )
+    try:
+        save_action(
+            user_id=clean_user_id,
+            action="agent_response",
+            result=response,
+        )
+    except Exception as e:
+        logger.warning(f"Could not record agent action: {e}")
 
     # 9. BACKGROUND MEMORY EXTRACTION (Memory Gate)
     try:
