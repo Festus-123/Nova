@@ -1,0 +1,359 @@
+================================================================================
+NEBULA ABILITY 0.01: THE ARTIST (GEOMETRIC DRAWING ENGINE)
+CLIENT PLATFORM INTEGRATION GUIDE & ENDPOINT SPECIFICATION
+================================================================================
+
+Target File: directions/abilitie_endpoint.txt
+Service: Nebula AI Agent Backend
+Ability: 0.01 (The Artist - Geometric Drawing Engine)
+Formats Supported: PNG (Raster), SVG (Vector)
+
+--------------------------------------------------------------------------------
+1. OVERVIEW FOR INTEGRATING PLATFORMS
+--------------------------------------------------------------------------------
+
+The Artist is a geometric drawing capability in Nebula that converts natural-
+language drawing requests into precise mathematical compositions using:
+- Dynamic circles and ellipses (dynamically computed radius, center, overlap)
+- Sharp straight strokes, outlines, and coordinate grids
+- Quadratic and Cubic Bezier curves
+- Polygons and custom paths
+- Boolean operations: UNION, INTERSECTION, and SUBTRACTION
+- Reusable parameterized patterns stored in Artist DB (e.g. wheels, chassis, gears)
+
+Consuming platforms (web applications, mobile apps, frontend dashboards, or
+external services) can integrate with The Artist via:
+1. Direct HTTP REST API (fastest, structured, programmatic)
+2. Nebula Conversational Agent API (`POST /research` using the `artist_draw` tool)
+
+
+--------------------------------------------------------------------------------
+2. BASE URL & HEADERS
+--------------------------------------------------------------------------------
+
+Default Local Base URL:
+  http://localhost:8000
+
+Common Request Headers:
+  Content-Type: application/json
+  Accept: application/json
+
+CORS:
+  Supported browser origins are configured via the server's NEBULA_CORS_ORIGINS
+  environment variable (defaulting to localhost:3000, localhost:5173, etc.).
+
+
+--------------------------------------------------------------------------------
+3. PRIMARY WORKFLOW FOR CONSUMING CLIENTS
+--------------------------------------------------------------------------------
+
+Step 1: Submit Drawing Request
+  Client sends POST /artist/draw with the prompt and preferred dimensions/format.
+
+Step 2: Receive Drawing Metadata
+  The server calculates geometry, renders both PNG and SVG files, saves the record,
+  and returns the unique `drawing_id` along with URLs.
+
+Step 3: Render / Embed / Download Image
+  Client displays the image directly using `<img src="{image_url}" />` or downloads
+  the vector SVG via `?format=svg`.
+
+
+--------------------------------------------------------------------------------
+4. ENDPOINT REFERENCE
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+4.1 CREATE A DRAWING
+--------------------------------------------------------------------------------
+Endpoint: POST /artist/draw
+Content-Type: application/json
+
+Request Body:
+{
+  "prompt": "Draw a Ferrari",         // Required: text prompt describing what to draw
+  "width": 800,                       // Optional: integer (100 to 4096), default 800
+  "height": 600,                      // Optional: integer (100 to 4096), default 600
+  "format": "png",                    // Optional: "png" (raster) or "svg" (vector), default "png"
+  "parameters": {                     // Optional: custom parameters or color overrides
+    "body_color": "#E60000"
+  }
+}
+
+Response (200 OK):
+{
+  "drawing_id": "draw-d2d22d5cfee3",
+  "prompt": "Draw a Ferrari",
+  "filename": "draw_a_ferrari_draw-d2d.png",
+  "format": "png",
+  "width": 800,
+  "height": 600,
+  "image_url": "/artist/drawings/draw-d2d22d5cfee3/file",
+  "svg_url": "/artist/drawings/draw-d2d22d5cfee3/file?format=svg",
+  "status": "completed",
+  "primitives_count": 14,
+  "operations_count": 3,
+  "storage_path": "C:\\...\\drawings\\draw_a_ferrari_draw-d2d.png",
+  "created_at": "2026-11-02T15:42:25.000000+00:00"
+}
+
+HTTP Status Codes:
+  200 OK: Drawing successfully planned, rendered, and stored.
+  422 Unprocessable Entity: Empty prompt or invalid dimensions (< 100 or > 4096).
+  500 Internal Server Error: Rendering or internal execution failure.
+
+
+--------------------------------------------------------------------------------
+4.2 RETRIEVE IMAGE FILE (PNG / SVG)
+--------------------------------------------------------------------------------
+Endpoint: GET /artist/drawings/{drawing_id}/file
+
+Query Parameters:
+  format: Optional. "png" or "svg".
+          - If omitted, returns the format selected at creation time.
+          - Both PNG and SVG are always generated on disk for every drawing.
+
+Responses:
+  200 OK (PNG):
+    Content-Type: image/png
+    Body: Binary PNG image data.
+
+  200 OK (SVG):
+    Content-Type: image/svg+xml
+    Body: XML SVG vector data.
+
+  404 Not Found:
+    Drawing ID not found or file missing on disk.
+
+Frontend Embedding Examples:
+  HTML/React Image:
+    <img src="http://localhost:8000/artist/drawings/draw-d2d22d5cfee3/file" alt="Ferrari" />
+
+  Vector SVG Object:
+    <object data="http://localhost:8000/artist/drawings/draw-d2d22d5cfee3/file?format=svg" type="image/svg+xml"></object>
+
+
+--------------------------------------------------------------------------------
+4.3 GET DRAWING METADATA
+--------------------------------------------------------------------------------
+Endpoint: GET /artist/drawings/{drawing_id}
+
+Response (200 OK):
+{
+  "drawing_id": "draw-d2d22d5cfee3",
+  "prompt": "Draw a Ferrari",
+  "filename": "draw_a_ferrari_draw-d2d.png",
+  "format": "png",
+  "width": 800,
+  "height": 600,
+  "storage_path": "C:\\...\\drawings\\draw_a_ferrari_draw-d2d.png",
+  "status": "completed",
+  "primitives_count": 14,
+  "operations_count": 3,
+  "metadata": {
+    "theme": "ferrari_sports_car",
+    "car_width": 680.0,
+    "car_height": 190.4,
+    "wheelbase": 380.8,
+    "wheel_radius": 72.35
+  },
+  "created_at": "2026-11-02T15:42:25.000000+00:00"
+}
+
+
+--------------------------------------------------------------------------------
+4.4 LIST RECENT DRAWINGS
+--------------------------------------------------------------------------------
+Endpoint: GET /artist/drawings
+
+Query Parameters:
+  limit: Optional integer between 1 and 200 (default: 50).
+
+Response (200 OK):
+[
+  {
+    "drawing_id": "draw-d2d22d5cfee3",
+    "prompt": "Draw a Ferrari",
+    "filename": "draw_a_ferrari_draw-d2d.png",
+    "format": "png",
+    "width": 800,
+    "height": 600,
+    "status": "completed",
+    "created_at": "..."
+  }
+]
+
+
+--------------------------------------------------------------------------------
+4.5 REUSABLE GEOMETRIC PATTERNS (ARTIST DB)
+--------------------------------------------------------------------------------
+The Artist maintains parameterized patterns that can be scaled, rotated, and
+reused across multiple drawings without recomputing from scratch.
+
+4.5.1 List Patterns
+  Endpoint: GET /artist/patterns
+  Query Parameters: category (optional, e.g. "automotive", "mechanical")
+  Response: JSON array of pattern records.
+
+4.5.2 Get Pattern Details
+  Endpoint: GET /artist/patterns/{pattern_id_or_name}
+  Examples:
+    GET /artist/patterns/wheel
+    GET /artist/patterns/gear
+    GET /artist/patterns/sports_chassis
+
+4.5.3 Create / Update Pattern
+  Endpoint: POST /artist/patterns
+  Content-Type: application/json
+  Request Body:
+  {
+    "name": "clock_face",
+    "category": "mechanical",
+    "parameters": { "radius": 100.0, "dial_color": "#FFFFFF" },
+    "primitives": [ ... ],
+    "operations": [ ... ],
+    "description": "Standard 12-hour clock dial"
+  }
+
+
+--------------------------------------------------------------------------------
+4.6 HEALTH & READINESS VERIFICATION
+--------------------------------------------------------------------------------
+Endpoint: GET /health/ready
+
+Check `checks.artist_engine`:
+{
+  "status": "ready",
+  "service": "nebula",
+  "checks": {
+    "llm_configured": true,
+    "document_sorting_auth_configured": false,
+    "pdf_rendering": true,
+    "ocr": false,
+    "artist_engine": true           // Confirms The Artist is ready to process drawings
+  }
+}
+
+
+--------------------------------------------------------------------------------
+5. CALLING VIA NEBULA AGENT CONVERSATION
+--------------------------------------------------------------------------------
+If your platform communicates through Nebula's natural-language chat endpoint:
+
+Endpoint: POST /research
+Request Body:
+{
+  "query": "Please draw a Ferrari for me with dimensions 800 by 600",
+  "user_id": "user_123",
+  "session_id": "session_abc"
+}
+
+Nebula's agent will invoke the registered `artist_draw` tool and reply with:
+- The Drawing ID
+- Generated filename and storage location
+- Direct HTTP image link (/artist/drawings/{drawing_id}/file)
+- Details about the geometric primitives and boolean operations used
+
+
+--------------------------------------------------------------------------------
+6. CODE SAMPLES FOR INTEGRATING PLATFORMS
+--------------------------------------------------------------------------------
+
+--- JAVASCRIPT / TYPESCRIPT (Browser or Node.js) ---
+
+async function generateAndDisplayDrawing(promptText) {
+  const BASE_URL = "http://localhost:8000";
+
+  // 1. Submit drawing request
+  const response = await fetch(`${BASE_URL}/artist/draw`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt: promptText,
+      width: 800,
+      height: 600,
+      format: "png"
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Drawing request failed: ${response.statusText}`);
+  }
+
+  const drawing = await response.json();
+  console.log("Drawing created:", drawing.drawing_id);
+
+  // 2. Full URL for image display
+  const imageUrl = `${BASE_URL}${drawing.image_url}`;
+  const svgUrl = `${BASE_URL}${drawing.svg_url}`;
+
+  // 3. Inject image into DOM
+  const imgElement = document.createElement("img");
+  imgElement.src = imageUrl;
+  imgElement.alt = drawing.prompt;
+  document.body.appendChild(imgElement);
+
+  return { drawingId: drawing.drawing_id, imageUrl, svgUrl };
+}
+
+
+--- PYTHON CLIENT ---
+
+import requests
+
+BASE_URL = "http://localhost:8000"
+
+def draw_object(prompt: str, format: str = "png") -> dict:
+    payload = {
+        "prompt": prompt,
+        "width": 800,
+        "height": 600,
+        "format": format
+    }
+    res = requests.post(f"{BASE_URL}/artist/draw", json=payload)
+    res.raise_for_status()
+    data = res.json()
+
+    # Download image bytes
+    file_res = requests.get(f"{BASE_URL}{data['image_url']}")
+    with open(data["filename"], "wb") as f:
+        f.write(file_res.content)
+
+    print(f"Saved {data['filename']} ({len(file_res.content)} bytes)")
+    return data
+
+
+--- cURL COMMANDS ---
+
+# 1. Generate a Ferrari drawing:
+curl -X POST "http://localhost:8000/artist/draw" \
+     -H "Content-Type: application/json" \
+     -d '{"prompt": "Draw a Ferrari", "width": 800, "height": 600, "format": "png"}'
+
+# 2. Download the PNG file:
+curl -o ferrari.png "http://localhost:8000/artist/drawings/{DRAWING_ID}/file"
+
+# 3. Download the vector SVG file:
+curl -o ferrari.svg "http://localhost:8000/artist/drawings/{DRAWING_ID}/file?format=svg"
+
+# 4. Check readiness:
+curl "http://localhost:8000/health/ready"
+
+
+--------------------------------------------------------------------------------
+7. ERROR HANDLING GUIDELINES FOR CLIENTS
+--------------------------------------------------------------------------------
+
+- Status 422: Validation error (e.g., prompt string is empty or whitespace only,
+  or width/height are outside permitted bounds 100-4096).
+  Inspect `response.json().detail` for details.
+
+- Status 404: Drawing or pattern not found.
+  Occurs when requesting non-existent drawing ID or pattern name.
+
+- Status 500: Server error during geometric calculation or image file write.
+  Client should display a retry option.
+
+================================================================================
+END OF SPECIFICATION: directions/abilitie_endpoint.txt
+================================================================================

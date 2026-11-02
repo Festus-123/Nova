@@ -1,0 +1,84 @@
+"""
+The Artist (Ability 0.01) - Geometric Drawing Engine for Nebula.
+"""
+
+from .config import ArtistSettings, ARTIST_SETTINGS
+from .errors import (
+    ArtistError,
+    GeometricValidationError,
+    PatternNotFoundError,
+    DrawingNotFoundError,
+    RenderingError,
+    PlanningError,
+)
+from .models import (
+    OperationType,
+    PrimitiveType,
+    RenderFormat,
+    DrawingStatus,
+    Point,
+    GeometricPrimitive,
+    GeometricOperation,
+    DrawingPlan,
+    PatternRecord,
+    DrawingRecord,
+    DrawRequest,
+    DrawResponse,
+    PatternCreateRequest,
+)
+from .geometry import (
+    Vector2D,
+    CircleMath,
+    StrokeMath,
+    BezierMath,
+    PolygonMath,
+    TransformMath,
+)
+from .grid import CanvasGrid, GridCell
+from .boolean import BooleanEngine
+from .db import ArtistDB
+from .patterns import PatternEngine
+from .renderer import SVGRenderer, PNGRenderer
+from .nebula_planner import NebulaPlanner
+from .engine import ArtistEngine
+from .tool import artist_draw
+
+__all__ = [
+    "ArtistSettings",
+    "ARTIST_SETTINGS",
+    "ArtistError",
+    "GeometricValidationError",
+    "PatternNotFoundError",
+    "DrawingNotFoundError",
+    "RenderingError",
+    "PlanningError",
+    "OperationType",
+    "PrimitiveType",
+    "RenderFormat",
+    "DrawingStatus",
+    "Point",
+    "GeometricPrimitive",
+    "GeometricOperation",
+    "DrawingPlan",
+    "PatternRecord",
+    "DrawingRecord",
+    "DrawRequest",
+    "DrawResponse",
+    "PatternCreateRequest",
+    "Vector2D",
+    "CircleMath",
+    "StrokeMath",
+    "BezierMath",
+    "PolygonMath",
+    "TransformMath",
+    "CanvasGrid",
+    "GridCell",
+    "BooleanEngine",
+    "ArtistDB",
+    "PatternEngine",
+    "SVGRenderer",
+    "PNGRenderer",
+    "NebulaPlanner",
+    "ArtistEngine",
+    "artist_draw",
+]

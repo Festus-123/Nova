@@ -29,3 +29,127 @@ instruction.txt phases 1-15: DONE.
 - requirement.txt is server-only; voice deps -> requirements-desktop.txt.
 - nebula_*.db and __pycache__ untracked from git (files kept on disk).
 Nothing committed yet.
+
+
+> execute 0.01.txt in abilities/ (note: check what needs to be checked in the project before building)
+
+○ Thought for 2m 10s (The image processing library functions correctly. Now, considering the directory structure for...
+● Ran 3 commands, checked 1 task, killed 1 task (Get-ChildItem -Recurse | Select-Object FullName · Get-ChildItem -Ex...
+● Explored 2 files (0.01.txt, agy_progress.txt)
+… 30 more actions (15 reads, 9 commands, 6 tasks: 1 failed) …
+● Ran (.\venv\Scripts\python.exe -c "from PIL import Image, ImageDraw; img = Image.new('RGBA', (100, 100), (255, 255...
+● Ran (git status) (ctrl+o to expand)
+
+▸ Thought for 12s
+  The architecture incorporates a SQLite database for persistent pattern storage, versioning, and drawing records, al..
+  ### Pre-Build Verification & Audit
+
+  Before writing or modifying any code, the project was audited in accordance with the pre-build requirements and
+  Sections 12 & 13 of abilities/0.01.txt:
+
+  1. Architecture & Dependencies Audit:
+      • Inspected main.py, server.py, memory.py, history.py, tools.py, and document_sorter/ to understand existing
+      interfaces and conventions.
+      • Verified active Python environment dependencies (PIL/Pillow, numpy, fastapi, langchain, pydantic).
+      • Confirmed directory layout, database file locations (NEBULA_DATA_DIR), and storage conventions.
+  2. Regression Baseline:
+      • Ran the existing test suite: 69 tests passed, 3 live-tests skipped, 0 failures.
+  3. Architectural Isolation:
+      • The Artist was isolated as an independent, modular package (artist/), preventing any architectural conflict or
+      breaking change to existing Nebula capabilities (memory, history, document sorting, research).
+
+  ──────
+  ### Implementation of Ability 0.01: The Artist
+
+  The geometric drawing engine was implemented across modular components in artist/:
+
+  • **geometry.py**: Mathematical calculations for dynamic circles (radius, diameter, circumference, area, overlap,
+  exact 2D intersection points, external/internal tangency), straight strokes, line intersections, Bézier curves
+  (quadratic and cubic), polygons (centroid, bounding box, Shoelace area), and affine transformations.
+  • **grid.py**: Canvas and Grid system with adjustable resolution, continuous-to-cell coordinate mapping, snapping,
+  and spatial partitioning/indexing to identify relevant cells and avoid unnecessary calculations.
+  • **boolean.py**: Boolean engine implementing UNION, INTERSECTION, and SUBTRACTION with anti-aliased mask
+  composition for raster rendering and vector clipping/masking structures for SVG.
+  • **db.py**: Persistent SQLite database (nebula_artist.db) storing drawing records and reusable parameterized
+  patterns, pre-seeded with starter patterns (wheel, gear, sports_chassis).
+  • **patterns.py**: Pattern engine supporting retrieval, parameterization (scaling, translation, rotation, color
+  overrides), and pattern versioning.
+  • **renderer.py**: Dual renderers generating vector SVG and anti-aliased raster PNG (via Pillow).
+  • **nebula_planner.py**: Nebula Intelligence planner that interprets natural-language instructions (e.g. "Draw a
+  Ferrari"), decomposes objects into geometric components, sizes circles dynamically, and schedules boolean operations
+  (such as subtracting wheel wells from the aerodynamic chassis).
+  • **engine.py**: Orchestrator managing planning, geometry calculation, rendering, file storage, and database
+  tracking.
+  • **tool.py**: LangChain @tool artist_draw registered in main.py for conversational drawing requests.
+  ──────
+  ### HTTP API Endpoints Added to server.py
+
+   Endpoint                           │ Method       │ Description
+  ────────────────────────────────────┼──────────────┼────────────────────────────────────────────────────────────────
+   /artist/draw                       │ POST         │ Submits a drawing prompt to Nebula Intelligence and The Artist
+   /artist/drawings                   │ GET          │ Lists recent drawing records
+   /artist/drawings/{drawing_id}      │ GET          │ Retrieves metadata for a specific drawing
+   /artist/drawings/{drawing_id}/file │ GET          │ Serves the rendered image file (image/png or image/svg+xml)
+   /artist/patterns                   │ GET / POST   │ Lists or stores reusable parameterized patterns
+   /artist/patterns/{pattern_id}      │ GET          │ Retrieves a specific pattern definition
+
+  Readiness checks in /health/ready now include "artist_engine": True.
+  ──────
+  ### Verification & Test Results
+
+  1. The Artist Test Suite (test_artist.py):
+      • Verified dynamic circle math, intersection points, strokes, and Bézier curves.
+      • Verified canvas grid spatial queries and cell containment.
+      • Verified boolean union, intersection, and subtraction masks.
+      • Verified pattern parameterization, instantiation, and versioning.
+      • Verified SVG vector generation and PNG image rasterization.
+      • Verified Ferrari construction, wheel well subtractions, and multi-layer wheels.
+      • Verified all FastAPI HTTP endpoints and file delivery.
+      • 15 / 15 passed.
+  2. Full Regression Suite:
+      • Ran pytest across the entire project: 84 passed, 3 skipped (live sorting tests), 0 failures.
+      • Preserved all existing memory, history, research, and document sorting functionality without regression.
+  3. Documentation:
+      • Created THE_ARTIST_API.md detailing architecture, schemas, and usage examples.
+
+
+────────────────────────────────────────────────────────────
+> okay create a abilitie_endpoint.txt in directions.. containing what, the platform that calls this feature needs to
+  know
+
+○ Thought for 44.9s (The user's request is to create a configuration file at a specific location. The file should co...
+● Edited 1 file (abilitie_endpoint.txt)
+● Ran 2 commands (Get-ChildItem directions/abilitie_endpoint.txt · git status) (ctrl+o to expand)
+
+  Created abilitie_endpoint.txt detailing everything a client platform needs to know to call and integrate Ability
+  0.01 (The Artist).
+
+  ### Summary of What the Document Covers
+
+  1. System Overview:
+      • Capability summary: converts natural-language prompts into geometric drawings using dynamic circles, curves,
+      sharp strokes, and Boolean operations (UNION, INTERSECTION, SUBTRACTION).
+      • Supported output formats: PNG (raster) and SVG (scalable vector).
+  2. Base URL & Request Configurations:
+      • Server base URL (http://localhost:8000 / production host), request headers, and CORS handling.
+  3. Primary Workflow:
+      • Step 1: Submit drawing prompt (POST /artist/draw).
+      • Step 2: Receive structured metadata and direct URLs.
+      • Step 3: Embed, render, or download the image via GET /artist/drawings/{drawing_id}/file.
+  4. Endpoint Reference & Payload Specifications:
+      • POST /artist/draw: Request/response JSON schemas, parameters (prompt, width, height, format, parameters), and
+      status codes.
+      • GET /artist/drawings/{drawing_id}/file: Serving raw binary PNG or vector SVG (using ?format=svg or
+      ?format=png) for embedding in <img> tags or download.
+      • GET /artist/drawings/{drawing_id}: Metadata and geometric properties inspection.
+      • GET /artist/drawings: Listing recent drawings with pagination (limit).
+      • GET /artist/patterns & POST /artist/patterns: Managing reusable parameterized patterns in Artist DB.
+      • GET /health/ready: Verifying service health (checks.artist_engine == true).
+  5. Conversational Agent Integration:
+      • Calling through Nebula's natural language agent endpoint (POST /research) via the @tool artist_draw.
+  6. Ready-to-Use Client Code Examples:
+      • Browser & Node.js (JavaScript/TypeScript fetch with DOM <img src="..."/> injection).
+      • Python (requests download and file saving).
+      • cURL command snippets.
+  7. Error Handling & Constraints:
+      • Handling 422 Unprocessable Entity (validation bounds 100–4096 px), 404 Not Found, and 500 Server Error.

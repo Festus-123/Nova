@@ -16,6 +16,7 @@ from tools import (
     delete_user_memory,
 )
 from document_sorter.tool import sort_documents
+from artist.tool import artist_draw
 
 from memory import (
     initialize_memory,
@@ -65,6 +66,7 @@ tools = [
     list_user_memories,
     delete_user_memory,
     sort_documents,
+    artist_draw,
 ]
 
 
@@ -156,6 +158,7 @@ CORE CAPABILITIES & RULES:
    - Use `save_report` / `read_report` for saving long markdown reports to files.
    - Use `ocr_image_scan` to read text or extract target data from images.
    - Use `sort_documents` to group and classify local document files by a metadata schema.
+   - Use `artist_draw` to construct precise geometric drawings using The Artist when asked to draw objects, create geometric art, or visualize compositions.
    - Never fabricate tool results or claims of tool usage.
 
 3. ACCURACY & CONVERSATION STYLE:

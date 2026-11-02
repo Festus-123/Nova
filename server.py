@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import warnings
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 # The sorting endpoint's multipart field is literally named "schema" (part of
@@ -11,10 +12,22 @@ warnings.filterwarnings("ignore", message=r'Field name "schema', category=UserWa
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from main import run_research
+from artist import (
+    ArtistEngine,
+    DrawRequest,
+    DrawResponse,
+    DrawingRecord,
+    PatternRecord,
+    PatternCreateRequest,
+    ArtistError,
+    DrawingNotFoundError,
+    PatternNotFoundError,
+    GeometricValidationError,
+)
 from memory import (
     get_memories,
     save_memory,
@@ -106,6 +119,16 @@ def get_sorting_engine() -> DocumentSortingEngine:
     if _sorting_engine is None:
         _sorting_engine = DocumentSortingEngine(settings=SORTER_SETTINGS)
     return _sorting_engine
+
+
+_artist_engine: Optional[ArtistEngine] = None
+
+
+def get_artist_engine() -> ArtistEngine:
+    global _artist_engine
+    if _artist_engine is None:
+        _artist_engine = ArtistEngine()
+    return _artist_engine
 
 
 def _presented_api_key(request: Request) -> Optional[str]:
@@ -224,6 +247,7 @@ def readiness():
         "document_sorting_auth_configured": bool(os.environ.get("NEBULA_API_KEY")),
         "pdf_rendering": pdf_rendering,
         "ocr": ocr_available(),
+        "artist_engine": True,
     }
     return {
         "status": "ready" if checks["llm_configured"] else "degraded",
@@ -490,3 +514,133 @@ def sort_documents_endpoint(
     except Exception:
         logger.exception("request_id=%s sorting_internal_error", sorting_request.request_id)
         raise SortingError("Internal error while processing documents.", code="internal_error", http_status=500)
+
+
+# ============================================================
+# THE ARTIST: GEOMETRIC DRAWING ENGINE ENDPOINTS (ABILITY 0.01)
+# ============================================================
+
+@app.post(
+    "/artist/draw",
+    response_model=DrawResponse,
+    tags=["artist"],
+    summary="Construct a geometric drawing from instructions",
+)
+def create_drawing_endpoint(request: DrawRequest):
+    """
+    Submits a drawing prompt to Nebula Intelligence and The Artist.
+    Calculates dynamic geometry, circles, curves, sharp strokes,
+    and boolean operations, returning completed drawing metadata and URLs.
+    """
+    try:
+        engine = get_artist_engine()
+        return engine.draw(request)
+    except GeometricValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message)
+    except ArtistError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=exc.message)
+    except Exception as exc:
+        logger.exception("The Artist failed to construct drawing: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Drawing failed: {str(exc)}")
+
+
+@app.get(
+    "/artist/drawings",
+    response_model=List[DrawingRecord],
+    tags=["artist"],
+    summary="List completed drawings",
+)
+def list_drawings_endpoint(limit: int = Query(50, ge=1, le=200)):
+    """Lists recent drawings created by The Artist."""
+    engine = get_artist_engine()
+    return engine.list_drawings(limit=limit)
+
+
+@app.get(
+    "/artist/drawings/{drawing_id}",
+    response_model=DrawingRecord,
+    tags=["artist"],
+    summary="Get drawing details",
+)
+def get_drawing_endpoint(drawing_id: str):
+    """Retrieves metadata and properties of a specific drawing."""
+    engine = get_artist_engine()
+    try:
+        return engine.get_drawing(drawing_id)
+    except DrawingNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Drawing '{drawing_id}' not found")
+
+
+@app.get(
+    "/artist/drawings/{drawing_id}/file",
+    tags=["artist"],
+    summary="Retrieve rendered image file (PNG or SVG)",
+)
+def get_drawing_file_endpoint(
+    drawing_id: str,
+    format: Optional[str] = Query(None, description="Preferred format: 'png' or 'svg'"),
+):
+    """Serves the rendered image file (PNG or SVG) for a drawing."""
+    engine = get_artist_engine()
+    try:
+        record = engine.get_drawing(drawing_id)
+    except DrawingNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Drawing '{drawing_id}' not found")
+
+    target_format = (format or record.format).lower().strip()
+    file_path = Path(record.storage_path)
+
+    if target_format == "svg" and file_path.suffix.lower() != ".svg":
+        svg_candidate = file_path.with_suffix(".svg")
+        if svg_candidate.is_file():
+            file_path = svg_candidate
+    elif target_format == "png" and file_path.suffix.lower() != ".png":
+        png_candidate = file_path.with_suffix(".png")
+        if png_candidate.is_file():
+            file_path = png_candidate
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Drawing file not found on disk")
+
+    media_type = "image/svg+xml" if file_path.suffix.lower() == ".svg" else "image/png"
+    return FileResponse(path=str(file_path), media_type=media_type, filename=file_path.name)
+
+
+@app.get(
+    "/artist/patterns",
+    response_model=List[PatternRecord],
+    tags=["artist"],
+    summary="List reusable geometric patterns in Artist DB",
+)
+def list_patterns_endpoint(category: Optional[str] = Query(None)):
+    """Lists reusable parameterized patterns stored in the Artist DB."""
+    engine = get_artist_engine()
+    return engine.list_patterns(category=category)
+
+
+@app.get(
+    "/artist/patterns/{pattern_id_or_name}",
+    response_model=PatternRecord,
+    tags=["artist"],
+    summary="Get pattern definition",
+)
+def get_pattern_endpoint(pattern_id_or_name: str):
+    """Retrieves a specific reusable pattern definition by ID or name."""
+    engine = get_artist_engine()
+    pattern = engine.get_pattern(pattern_id_or_name)
+    if not pattern:
+        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id_or_name}' not found")
+    return pattern
+
+
+@app.post(
+    "/artist/patterns",
+    response_model=PatternRecord,
+    tags=["artist"],
+    summary="Store or update a parameterized pattern",
+)
+def create_pattern_endpoint(request: PatternCreateRequest):
+    """Saves a new parameterized pattern or updates existing pattern with incremented version."""
+    engine = get_artist_engine()
+    return engine.save_pattern(request)
+
