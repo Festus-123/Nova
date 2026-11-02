@@ -1,0 +1,383 @@
+0.01 The artist
+
+PROJECT: THE ARTIST
+ABILITY: 0.01
+INTELLIGENCE: NEBULA
+
+OBJECTIVE
+
+Build a geometric drawing engine called The Artist.
+
+The Artist is a system that converts drawing
+instructions into precise geometric compositions
+using mathematically calculated circles, curves,
+and sharp strokes.
+
+It should be capable of constructing simple and
+complex drawings through the combination and
+manipulation of geometric shapes.
+
+1. CORE DRAWING PRINCIPLE
+
+The Artist uses three fundamental geometric
+operations:
+
+- UNION: Combine two or more geometric shapes
+  into one continuous shape.
+
+- INTERSECTION: Retain only the overlapping
+  region shared by two or more shapes.
+
+- SUBTRACTION: Remove a geometric region from
+  another shape to create cuts, gaps, and details.
+
+These three operations form the foundation
+of the drawing engine.
+
+Circles are the primary geometric building
+blocks. However, their dimensions must never
+be restricted to predefined or fixed sizes.
+
+Each circle must have dynamically calculated:
+
+- Radius
+- Diameter
+- Circumference
+- Centre coordinates
+- Position
+- Overlap
+- Intersection points
+- Relationship with neighbouring circles
+
+The engine must determine the appropriate
+dimensions and placement of every circle
+according to the drawing being constructed.
+
+2. NEBULA INTELLIGENCE
+
+Nebula is the intelligence responsible for
+interpreting drawing instructions and
+coordinating The Artist's geometric operations.
+
+When given a prompt such as:
+
+"Draw a Ferrari"
+
+Nebula must:
+
+- Interpret the requested object.
+- Determine its overall dimensions and proportions.
+- Calculate the required drawing boundaries.
+- Decompose the object into geometric components.
+- Determine how many circles and strokes are needed.
+- Calculate the radius and position of each circle.
+- Determine where UNION, INTERSECTION, and
+  SUBTRACTION operations are required.
+- Establish the order in which these operations
+  must be executed.
+- Send the resulting geometric instructions
+  to The Artist.
+
+Nebula must not rely on a fixed collection of
+predefined drawings.
+
+It must calculate the geometry required for
+each new drawing.
+
+3. CANVAS AND GRID SYSTEM
+
+Every drawing must be constructed on a
+mathematically organized canvas.
+
+The canvas must be divided into smaller
+coordinate regions, grids, or cells.
+
+These cells provide a reference system for
+positioning geometric components precisely.
+
+The grid system must support:
+
+- Accurate coordinate positioning.
+- Circle placement and alignment.
+- Intersection detection.
+- Boundary detection.
+- Stroke positioning.
+- Geometric clipping.
+- Precise edge construction.
+
+Grid resolution should be adjustable according
+to the complexity and required precision of
+the drawing.
+
+The system must avoid unnecessary calculations
+by identifying only the cells relevant to
+the current geometric operation.
+
+4. GEOMETRIC CONSTRUCTION
+
+The Artist must use circles and sharp strokes
+to construct drawings.
+
+Circles provide the foundational geometry,
+while strokes provide edges, outlines,
+connections, and finer details.
+
+The drawing engine must support:
+
+- Variable circle dimensions.
+- Multiple overlapping circles.
+- Compound geometric shapes.
+- Boolean operations.
+- Precise curve construction.
+- Stroke and outline generation.
+- Geometric clipping and masking.
+- Layer ordering.
+- Shape refinement.
+
+The engine should be capable of combining
+numerous geometric components into a single
+recognizable composition.
+
+5. ARTIST DATABASE AND PATTERN MEMORY
+
+The Artist must have access to a persistent
+database known as the Artist DB.
+
+Nebula should identify and save recurring
+geometric patterns, arrangements, and
+reusable construction sequences.
+
+For example:
+
+If a particular wheel geometry has already
+been constructed and saved, Nebula should
+be able to retrieve and reuse that pattern
+when constructing another vehicle.
+
+The database should support:
+
+- Pattern identification.
+- Pattern storage.
+- Pattern retrieval.
+- Pattern reuse.
+- Pattern modification.
+- Pattern categorization.
+- Pattern versioning.
+
+Saved patterns must be parameterized rather
+than restricted to their original dimensions.
+
+This allows a retrieved pattern to be resized,
+repositioned, rotated, or modified without
+reconstructing it from scratch.
+
+Nebula should continuously improve its
+drawing efficiency through reusable patterns.
+
+6. IMAGE RENDERING AND HTTP DELIVERY
+
+After a drawing has been completed, The Artist
+must be able to render the geometric composition
+into a standard image format.
+
+Supported initial output formats:
+
+- PNG
+- SVG
+
+PNG should be used for conventional raster
+image delivery.
+
+SVG should preserve the underlying vector
+geometry where possible.
+
+The system must expose an HTTP interface
+through which completed drawings can be
+requested and retrieved.
+
+Each completed drawing should have:
+
+- A unique drawing identifier.
+- A generated filename.
+- Its image format.
+- Its dimensions.
+- Its storage location.
+- Its rendering status.
+
+Example:
+
+ferrari.png
+
+The image must be accessible through an
+HTTP endpoint.
+
+7. EXECUTION FLOW
+
+The expected execution flow is:
+
+USER PROMPT
+    |
+    v
+NEBULA INTELLIGENCE
+    |
+    v
+PROMPT INTERPRETATION
+    |
+    v
+GEOMETRIC DECOMPOSITION
+    |
+    v
+CIRCLE AND STROKE CALCULATIONS
+    |
+    v
+GRID-BASED COORDINATE MAPPING
+    |
+    v
+BOOLEAN GEOMETRIC OPERATIONS
+    |
+    v
+PATTERN LOOKUP / REUSE
+    |
+    v
+ARTIST DRAWING ENGINE
+    |
+    v
+IMAGE RENDERING
+    |
+    v
+ARTIST DB STORAGE
+    |
+    v
+HTTP IMAGE DELIVERY
+    |
+    v
+ferrari.png
+
+8. ENGINEERING REQUIREMENTS
+
+The system must be modular.
+
+Separate the following responsibilities:
+
+- Nebula: Interpretation and drawing planning.
+- Geometry Engine: Mathematical calculations.
+- Circle Engine: Circle construction and management.
+- Boolean Engine: Union, intersection, subtraction.
+- Grid Engine: Canvas subdivision and coordinates.
+- Stroke Engine: Lines, outlines, and sharp details.
+- Pattern Engine: Pattern recognition and reuse.
+- Artist DB: Persistent pattern and drawing storage.
+- Renderer: Conversion into image formats.
+- HTTP Server: Drawing retrieval and delivery.
+
+Avoid coupling the intelligence layer directly
+to the rendering layer.
+
+Nebula should produce structured geometric
+instructions that The Artist can execute.
+
+9. IMPORTANT DESIGN CONSTRAINTS
+
+- Do not use fixed circle dimensions.
+- Do not restrict drawings to predefined templates.
+- Do not treat the canvas as an unstructured
+  collection of pixels.
+- Do not perform unnecessary geometric operations.
+- Do not reconstruct reusable patterns unnecessarily.
+- Maintain geometric accuracy and consistent
+  coordinate relationships.
+- Support drawings of different dimensions
+  and complexity.
+- Keep the architecture extensible.
+
+10. EXPECTED RESULT
+
+A user should be able to submit a natural-language
+drawing instruction.
+
+Nebula interprets the instruction, calculates
+the geometry, and coordinates The Artist.
+
+The Artist constructs the requested object
+using dynamically sized circles, geometric
+operations, and precise strokes.
+
+The completed drawing is rendered, stored,
+and made accessible through HTTP.
+
+Example:
+
+INPUT:
+"Draw a Ferrari"
+
+OUTPUT:
+A geometrically constructed Ferrari drawing
+accessible as ferrari.png.
+
+11. EXTENSIBLE GEOMETRIC CONSTRUCTION
+
+The Artist must not be restricted to circles as its only geometric construction primitive.
+
+Circles are the primary foundational primitives, but the engine must support additional geometric elements whenever the drawing requires them.
+
+Supported geometric primitives should include:
+- Circles and ellipses.
+- Straight lines and sharp strokes.
+- Bezier curves (quadratic and cubic).
+- Polygons and custom paths.
+- Arcs and irregular curves.
+- Compound geometric shapes.
+Nebula must intelligently determine which geometric primitives are appropriate for each section of a drawing.
+
+For example, when constructing a vehicle:
+- Circles and ellipses can construct wheels.
+- Bezier curves can construct the vehicle's body contours.
+- Straight strokes can construct sharp edges and structural details.
+- Polygons can construct angular components.
+- Boolean operations can combine, intersect, or subtract geometric regions.
+The objective is to give The Artist the flexibility to construct both organic and mechanical objects without being constrained by a single geometric primitive.
+
+All geometric elements must remain compatible with the existing UNION, INTERSECTION, and SUBTRACTION operations wherever applicable.
+
+12. NEBULA SYSTEM INTEGRITY AND COMPATIBILITY
+
+CRITICAL: Nebula is an already established, large system with existing architecture, intelligence, capabilities, modules, workflows, and dependencies.
+
+The implementation of The Artist (Ability 0.01) must NOT compromise, replace, restructure, or break any existing Nebula functionality.
+
+Follow these requirements strictly:
+1. Preserve the existing Nebula architecture and established system structure.
+2. Do not rewrite existing modules simply to accommodate The Artist.
+3. Do not remove, rename, or modify existing functionalities unless explicitly required and approved.
+4. Do not introduce breaking changes to existing APIs, interfaces, or communication protocols.
+5. Implement The Artist as an independent, modular capability that integrates with Nebula through clearly defined interfaces.
+6. Reuse existing Nebula infrastructure, utilities, intelligence, and services wherever appropriate.
+7. Avoid duplicating functionality that Nebula already provides.
+8. Keep The Artist's internal drawing engine isolated from unrelated Nebula components.
+9. Ensure that failures within The Artist cannot crash or compromise the wider Nebula system.
+10. Maintain compatibility with existing and future Nebula capabilities.
+13. IMPLEMENTATION AND DEVELOPMENT APPROACH
+
+Before writing or modifying code:
+- Inspect the existing Nebula codebase.
+- Understand its architecture, module structure, conventions, and dependencies.
+- Identify the appropriate integration point for Ability 0.01.
+- Identify existing utilities or services that can be reused.
+- Establish the boundaries between Nebula and The Artist.
+Development must follow an incremental approach.
+
+Implement and test The Artist independently before integrating it into the wider Nebula system.
+
+Run relevant regression tests to ensure existing capabilities remain functional.
+
+Do not assume that a new implementation requires changes to the existing intelligence layer.
+
+If an architectural conflict arises, prioritize preserving existing Nebula functionality and find a compatible integration approach.
+
+FINAL DIRECTIVE
+
+The Artist is an additional ability of Nebula, not a replacement for Nebula.
+
+Its purpose is to expand what Nebula can do without compromising what Nebula already is.
+
+END OF INSTRUCTION.
