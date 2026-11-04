@@ -16,3 +16,6 @@ pypdf
 pypdfium2
 python-docx
 python-multipart
+shapely
+opencv-python-headless
+numpy

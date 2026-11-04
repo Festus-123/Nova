@@ -26,6 +26,9 @@ if os.environ.get("NEBULA_LIVE_TESTS") == "1":
     load_dotenv(ROOT / ".env")
 os.environ.setdefault("OPENAI_API_KEY", "sk-test-placeholder-key-not-real-000000")
 os.environ["NEBULA_SORT_OCR"] = "0"
+# The Artist: no test calls a real model. The older stored-pattern drawings are an explicit developer opt-in.
+os.environ["NEBULA_ARTIST_LLM"] = "0"
+os.environ["NEBULA_ARTIST_FALLBACK"] = "1"
 
 from document_sorter.ai import (  # noqa: E402
     GroupingPlan,

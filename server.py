@@ -544,6 +544,54 @@ def create_drawing_endpoint(request: DrawRequest):
         raise HTTPException(status_code=500, detail=f"Drawing failed: {str(exc)}")
 
 
+@app.post(
+    "/artist/draw-from-image",
+    response_model=DrawResponse,
+    tags=["artist"],
+    summary="Give Nebula a picture and get it back drawn from circles, shapes and booleans (vector)",
+)
+async def draw_from_image_endpoint(
+    image: UploadFile = File(..., description="PNG, JPG, WEBP or GIF"),
+    prompt: str = Form("", description="Optional: what the picture is, used as the drawing's name"),
+    style: str = Form("line", description="line | solid | color"),
+    detail: str = Form("medium", description="low | medium | high"),
+    width: int = Form(800, ge=100, le=4096),
+    height: int = Form(600, ge=100, le=4096),
+    format: str = Form("png"),
+    run_async: bool = Form(False, alias="async"),
+):
+    """
+    Nebula runs the picture through its image-processing tool, fits circles, rectangles, triangles and polygons to
+    what it finds (holes are subtractions), and returns the result as a clear vector drawing (SVG, with a PNG).
+    """
+    data = await image.read()
+    try:
+        return get_artist_engine().draw_from_image(
+            data, prompt=prompt, style=style, detail=detail, width=width, height=height, format=format, run_async=run_async,
+        )
+    except GeometricValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message)
+    except ArtistError as exc:
+        raise HTTPException(status_code=exc.http_status, detail=exc.message)
+    except Exception as exc:
+        logger.exception("The Artist failed to draw an image: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Drawing failed: {str(exc)}")
+
+
+@app.get(
+    "/artist/drawings/{drawing_id}/status",
+    response_model=DrawResponse,
+    tags=["artist"],
+    summary="Progress of a drawing started with async=true",
+)
+def drawing_status_endpoint(drawing_id: str):
+    """Where a background drawing is: pending, rendering, completed or failed (with the reason)."""
+    try:
+        return get_artist_engine().status(drawing_id)
+    except DrawingNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Drawing '{drawing_id}' not found")
+
+
 @app.get(
     "/artist/drawings",
     response_model=List[DrawingRecord],

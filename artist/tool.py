@@ -16,6 +16,8 @@ def artist_draw(
     format: str = "png",
     width: int = 800,
     height: int = 600,
+    style: str = "line",
+    quality: str = "balanced",
 ) -> str:
     """
     Construct a geometric drawing using Nebula's drawing engine (The Artist).
@@ -27,6 +29,8 @@ def artist_draw(
         format: Output image format ('png' or 'svg'). Defaults to 'png'.
         width: Canvas width in pixels (100 to 4096). Defaults to 800.
         height: Canvas height in pixels (100 to 4096). Defaults to 600.
+        style: 'line' (clean black line art, the default), 'solid' (bold silhouette) or 'color' (flat colours).
+        quality: 'fast', 'balanced' (default) or 'best' (also reviews and refines its own drawing).
 
     Returns:
         Summary containing the drawing ID, saved image filename, local storage path,
@@ -38,6 +42,8 @@ def artist_draw(
             format=format,
             width=width,
             height=height,
+            style=style,
+            quality=quality,
         )
         engine = ArtistEngine()
         result = engine.draw(request)

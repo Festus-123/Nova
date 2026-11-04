@@ -40,6 +40,10 @@ from .db import ArtistDB
 from .patterns import PatternEngine
 from .renderer import SVGRenderer, PNGRenderer
 from .nebula_planner import NebulaPlanner
+from .construct import Constructor, ResolvedDrawing
+from .llm_planner import ConstructionPlanner, PlanningUnavailableError
+from .vector_render import VectorSVG, VectorPNG
+from .vision import ImageVectorizer, ImageProblem
 from .engine import ArtistEngine
 from .tool import artist_draw
 
@@ -80,5 +84,13 @@ __all__ = [
     "PNGRenderer",
     "NebulaPlanner",
     "ArtistEngine",
+    "Constructor",
+    "ResolvedDrawing",
+    "ConstructionPlanner",
+    "PlanningUnavailableError",
+    "VectorSVG",
+    "VectorPNG",
+    "ImageVectorizer",
+    "ImageProblem",
     "artist_draw",
 ]

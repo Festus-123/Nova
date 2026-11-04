@@ -127,11 +127,16 @@ class DrawingRecord(BaseModel):
 
 
 class DrawRequest(BaseModel):
+    model_config = {"populate_by_name": True}
+
     prompt: str = Field(..., description="Drawing instruction, e.g. 'Draw a Ferrari'")
     width: Optional[int] = Field(800, ge=100, le=4096)
     height: Optional[int] = Field(600, ge=100, le=4096)
     format: Optional[str] = Field("png", description="Output format: 'png' or 'svg'")
     parameters: Optional[Dict[str, Any]] = Field(default=None, description="Optional custom styling/proportions")
+    style: Optional[str] = Field("line", description="'line' (clean black line art), 'solid' (bold silhouette) or 'color' (flat colours)")
+    quality: Optional[str] = Field("balanced", description="'fast' (one planning step), 'balanced' (interpret, then construct) or 'best' (also review and refine)")
+    run_async: Optional[bool] = Field(False, alias="async", description="Return at once with status 'pending'; poll GET /artist/drawings/{id}")
 
 
 class DrawResponse(BaseModel):
@@ -148,6 +153,16 @@ class DrawResponse(BaseModel):
     operations_count: int
     storage_path: str
     created_at: str
+    # Added with the constructive engine; all optional so existing clients keep working.
+    style: Optional[str] = None
+    planner: Optional[str] = None
+    source: Optional[str] = "prompt"
+    model: Optional[str] = None
+    notes: List[str] = Field(default_factory=list)
+    timeline: List[Dict[str, Any]] = Field(default_factory=list)
+    stage: Optional[str] = None
+    components: List[str] = Field(default_factory=list)
+    error: Optional[str] = None
 
 
 class PatternCreateRequest(BaseModel):
