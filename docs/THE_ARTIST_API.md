@@ -6,6 +6,11 @@ Bézier curves, joined and cut with three boolean operations (**union, intersect
 
 Nebula decides *what to build and where*. The Artist builds it exactly.
 
+> **G-Stroke versions.** Everything on this page describes **G-Stroke 1.0** (geometry), which is the default and is
+> what every request gets unless it asks otherwise. **G-Stroke 2.0** draws clean sketches with brushes, strokes and
+> strands instead. A client opts in per request with `"algorithm": "2.0"` (and optionally `"brush"`). See
+> [G_STROKE_2_0.md](G_STROKE_2_0.md). `GET /artist/algorithms` lists the versions.
+
 ```
  prompt ──► Nebula (language model) ──► construction program ──► Constructor (exact vector booleans) ──► SVG + PNG
  image  ──► image processing (OpenCV) ──► construction program ─┘

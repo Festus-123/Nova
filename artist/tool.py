@@ -18,6 +18,8 @@ def artist_draw(
     height: int = 600,
     style: str = "line",
     quality: str = "balanced",
+    algorithm: str = "1.0",
+    brush: str = "pencil",
 ) -> str:
     """
     Construct a geometric drawing using Nebula's drawing engine (The Artist).
@@ -31,6 +33,9 @@ def artist_draw(
         height: Canvas height in pixels (100 to 4096). Defaults to 600.
         style: 'line' (clean black line art, the default), 'solid' (bold silhouette) or 'color' (flat colours).
         quality: 'fast', 'balanced' (default) or 'best' (also reviews and refines its own drawing).
+        algorithm: G-Stroke version. '1.0' (default) is the geometric drawing above. '2.0' draws a sketch with
+            brushes, pen strokes and hatching instead (like a pencil or ink drawing).
+        brush: G-Stroke 2.0 only: 'pencil' (default), 'pen', 'fineliner', 'ink', 'charcoal' or 'marker'.
 
     Returns:
         Summary containing the drawing ID, saved image filename, local storage path,
@@ -44,11 +49,13 @@ def artist_draw(
             height=height,
             style=style,
             quality=quality,
+            algorithm=algorithm,
+            brush=brush,
         )
         engine = ArtistEngine()
         result = engine.draw(request)
         return (
-            f"Successfully constructed geometric drawing with The Artist:\n"
+            f"Successfully {'sketched' if result.algorithm == '2.0' else 'constructed geometric drawing'} with The Artist (G-Stroke {result.algorithm}):\n"
             f"- Drawing ID: {result.drawing_id}\n"
             f"- Prompt: {result.prompt}\n"
             f"- Filename: {result.filename}\n"

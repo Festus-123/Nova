@@ -44,6 +44,7 @@ from .construct import Constructor, ResolvedDrawing
 from .llm_planner import ConstructionPlanner, PlanningUnavailableError
 from .vector_render import VectorSVG, VectorPNG
 from .vision import ImageVectorizer, ImageProblem
+from .gstroke import ALGORITHMS, DEFAULT_ALGORITHM, ImageSketcher, Sketch, SketchPlanner, SketchPNG, SketchSVG, resolve_algorithm
 from .engine import ArtistEngine
 from .tool import artist_draw
 
@@ -93,4 +94,12 @@ __all__ = [
     "ImageVectorizer",
     "ImageProblem",
     "artist_draw",
+    "ALGORITHMS",
+    "DEFAULT_ALGORITHM",
+    "ImageSketcher",
+    "Sketch",
+    "SketchPlanner",
+    "SketchPNG",
+    "SketchSVG",
+    "resolve_algorithm",
 ]

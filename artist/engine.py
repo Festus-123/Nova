@@ -32,6 +32,7 @@ from .construct import Constructor
 from .llm_planner import ConstructionPlanner, PlanningUnavailableError
 from .vector_render import VectorPNG, VectorSVG
 from .vision import ImageVectorizer
+from .gstroke import ImageSketcher, SketchPlanner, SketchPNG, SketchSVG, get_brush, resolve_algorithm, v2_style
 
 # Drawings that take a while (a language model is involved) run here when the caller asks for a background job.
 _POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="artist")
@@ -54,6 +55,7 @@ class ArtistEngine:
         self.db = db or ArtistDB(db_path=self.settings.db_path)
         self.planner = NebulaPlanner(db=self.db)  # the original stored-pattern planner (developer fallback)
         self.constructor_planner = ConstructionPlanner()
+        self.sketch_planner = SketchPlanner()  # G-Stroke 2.0
         self._ensure_storage()
 
     def _ensure_storage(self) -> None:
@@ -71,13 +73,16 @@ class ArtistEngine:
         prompt = request.prompt.strip()
         if not prompt:
             raise GeometricValidationError("Drawing prompt cannot be empty")
+        algorithm = resolve_algorithm(request.algorithm)
         job = dict(
             kind="prompt",
+            algorithm=algorithm,
+            brush=get_brush(request.brush).name,
             prompt=prompt,
             width=request.width or self.settings.default_width,
             height=request.height or self.settings.default_height,
             format=(request.format or self.settings.default_format).lower().strip(),
-            style=_style(request.style),
+            style=v2_style(request.style) if algorithm == "2.0" else _style(request.style),
             quality=(request.quality or "balanced") if (request.quality or "balanced") in ("fast", "balanced", "best") else "balanced",
             parameters=request.parameters,
         )
@@ -93,18 +98,23 @@ class ArtistEngine:
         height: int = 600,
         format: str = "png",
         run_async: bool = False,
+        algorithm: Optional[str] = None,
+        brush: Optional[str] = None,
     ) -> DrawResponse:
         """Draws a picture Nebula was given: image processing, then circles / shapes / booleans, then vector art."""
         if not data:
             raise GeometricValidationError("No image was received")
+        algo = resolve_algorithm(algorithm)
         job = dict(
             kind="image",
+            algorithm=algo,
+            brush=get_brush(brush).name,
             prompt=(prompt or "").strip() or "Drawing from an image",
             image=data,
             width=int(width),
             height=int(height),
             format=(format or "png").lower().strip(),
-            style=_style(style),
+            style=v2_style(style) if algo == "2.0" else _style(style),
             detail=detail,
         )
         return self._submit(job, run_async)
@@ -123,7 +133,7 @@ class ArtistEngine:
             height=job["height"],
             storage_path="",
             status=DrawingStatus.PENDING.value,
-            metadata={"style": job["style"], "source": job["kind"], "stage": "queued", "timeline": []},
+            metadata={"style": job["style"], "source": job["kind"], "stage": "queued", "timeline": [], "algorithm": job.get("algorithm", "1.0"), "brush": job.get("brush") if job.get("algorithm") == "2.0" else None},
             created_at=datetime.now(timezone.utc).isoformat(),
         )
         self.db.save_drawing(record)
@@ -140,6 +150,8 @@ class ArtistEngine:
     def _run_job(self, job: Dict[str, Any], record: DrawingRecord, raise_errors: bool) -> DrawResponse:
         """The whole pipeline for one drawing. Never lets an exception escape in background mode."""
         t0 = time.time()
+        if job.get("algorithm") == "2.0":
+            return self._run_gstroke2(job, record, raise_errors, t0)  # G-Stroke 2.0 has its own pipeline; 1.0 below is unchanged
         try:
             width, height, style = job["width"], job["height"], job["style"]
             meta = record.metadata
@@ -176,6 +188,46 @@ class ArtistEngine:
             record.primitives_count, record.operations_count = drawing.primitives_count, drawing.operations_count
             record.status = DrawingStatus.COMPLETED.value
             record.metadata = {**record.metadata, "stage": "done", "seconds": round(time.time() - t0, 1)}
+            self.db.save_drawing(record)
+            return self._response(record)
+        except Exception as exc:  # noqa: BLE001
+            record.status = DrawingStatus.FAILED.value
+            code = getattr(exc, "code", "drawing_failed")
+            record.metadata = {**record.metadata, "stage": "failed", "error": getattr(exc, "message", str(exc))[:400], "error_code": code, "seconds": round(time.time() - t0, 1)}
+            self.db.save_drawing(record)
+            if raise_errors:
+                raise
+            return self._response(record)
+
+    def _run_gstroke2(self, job: Dict[str, Any], record: DrawingRecord, raise_errors: bool, t0: float) -> DrawResponse:
+        """G-Stroke 2.0: a sketch made of brushes, strokes and strands (from a picture, or from the model's pen)."""
+        try:
+            width, height, style, brush = job["width"], job["height"], job["style"], job["brush"]
+            meta = record.metadata
+            if job["kind"] == "image":
+                self._progress(record, "sketching the image")
+                sketch = ImageSketcher(width, height, style, job.get("detail", "medium"), brush).sketch(job["image"])
+                meta.update(planner="gstroke-image", notes=[sketch.meta.get("source", "")], components=[])
+            else:
+                self._progress(record, "planning the sketch")
+                if not self.sketch_planner.available:
+                    raise PlanningUnavailableError("Nebula's drawing model is not available right now, so nothing was drawn.")
+                plan = self.sketch_planner.plan(job["prompt"], width, height, style, job["quality"], brush, on_stage=lambda label: self._progress(record, label))
+                sketch = plan["sketch"]
+                meta.update(planner="gstroke-sketch", model=plan.get("model"), timeline=plan["timeline"], components=[], title=sketch.meta.get("title"))
+
+            self._progress(record, "rendering", **{k: v for k, v in meta.items() if k not in ("stage",)})
+            svg_filename, png_filename = f"{job['base']}.svg", f"{job['base']}.png"
+            svg_path = self.settings.drawings_dir / svg_filename
+            png_path = self.settings.drawings_dir / png_filename
+            svg_path.write_text(SketchSVG.render(sketch, job["prompt"]), encoding="utf-8")
+            SketchPNG.render(sketch).save(str(png_path), format="PNG", optimize=True, dpi=(144, 144))
+
+            primary_name, primary_path, out_fmt = (svg_filename, svg_path, "svg") if job["format"] == "svg" else (png_filename, png_path, "png")
+            record.filename, record.format, record.storage_path = primary_name, out_fmt, str(primary_path)
+            record.primitives_count, record.operations_count = sketch.stroke_count, 0
+            record.status = DrawingStatus.COMPLETED.value
+            record.metadata = {**record.metadata, "stage": "done", "seconds": round(time.time() - t0, 1), "strokes": sketch.stroke_count}
             self.db.save_drawing(record)
             return self._response(record)
         except Exception as exc:  # noqa: BLE001
@@ -241,6 +293,8 @@ class ArtistEngine:
             stage=m.get("stage"),
             components=[str(c) for c in (m.get("components") or [])][:40],
             error=m.get("error"),
+            algorithm=m.get("algorithm", "1.0"),
+            brush=m.get("brush"),
         )
 
     def status(self, drawing_id: str) -> DrawResponse:

@@ -137,6 +137,8 @@ class DrawRequest(BaseModel):
     style: Optional[str] = Field("line", description="'line' (clean black line art), 'solid' (bold silhouette) or 'color' (flat colours)")
     quality: Optional[str] = Field("balanced", description="'fast' (one planning step), 'balanced' (interpret, then construct) or 'best' (also review and refine)")
     run_async: Optional[bool] = Field(False, alias="async", description="Return at once with status 'pending'; poll GET /artist/drawings/{id}")
+    algorithm: Optional[str] = Field("1.0", description="G-Stroke version: '1.0' (geometry, the default) or '2.0' (sketching with brushes, strokes and strands)")
+    brush: Optional[str] = Field(None, description="G-Stroke 2.0 only: pencil (default), pen, fineliner, ink, charcoal or marker")
 
 
 class DrawResponse(BaseModel):
@@ -163,6 +165,8 @@ class DrawResponse(BaseModel):
     stage: Optional[str] = None
     components: List[str] = Field(default_factory=list)
     error: Optional[str] = None
+    algorithm: Optional[str] = "1.0"  # which G-Stroke version drew it
+    brush: Optional[str] = None  # G-Stroke 2.0 only
 
 
 class PatternCreateRequest(BaseModel):

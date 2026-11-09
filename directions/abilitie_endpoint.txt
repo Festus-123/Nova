@@ -27,6 +27,16 @@ external services) can integrate with The Artist via:
 2. Nebula Conversational Agent API (`POST /research` using the `artist_draw` tool)
 
 
+G-STROKE VERSIONS (choose per request)
+- 1.0 (DEFAULT): the geometric engine described in this document. Requests that
+  do not send "algorithm" get exactly this. Nothing here changes for them.
+- 2.0 (opt-in): sketching with brushes, points, strokes and strands (pencil, ink,
+  charcoal; hatching; optional colour). Send "algorithm": "2.0" on POST
+  /artist/draw (JSON) or algorithm=2.0 on POST /artist/draw-from-image (form),
+  optionally "brush": pencil | pen | fineliner | ink | charcoal | marker.
+  GET /artist/algorithms lists versions and brushes. Responses report which
+  version drew the picture in "algorithm". Full guide: docs/G_STROKE_2_0.md
+
 --------------------------------------------------------------------------------
 2. BASE URL & HEADERS
 --------------------------------------------------------------------------------

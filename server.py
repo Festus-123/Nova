@@ -559,6 +559,8 @@ async def draw_from_image_endpoint(
     height: int = Form(600, ge=100, le=4096),
     format: str = Form("png"),
     run_async: bool = Form(False, alias="async"),
+    algorithm: str = Form("1.0", description="G-Stroke version: 1.0 (geometry, default) or 2.0 (sketch)"),
+    brush: str = Form("", description="G-Stroke 2.0 only: pencil | pen | fineliner | ink | charcoal | marker"),
 ):
     """
     Nebula runs the picture through its image-processing tool, fits circles, rectangles, triangles and polygons to
@@ -568,6 +570,7 @@ async def draw_from_image_endpoint(
     try:
         return get_artist_engine().draw_from_image(
             data, prompt=prompt, style=style, detail=detail, width=width, height=height, format=format, run_async=run_async,
+            algorithm=algorithm, brush=brush or None,
         )
     except GeometricValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.message)
@@ -576,6 +579,23 @@ async def draw_from_image_endpoint(
     except Exception as exc:
         logger.exception("The Artist failed to draw an image: %s", exc)
         raise HTTPException(status_code=500, detail=f"Drawing failed: {str(exc)}")
+
+
+@app.get(
+    "/artist/algorithms",
+    tags=["artist"],
+    summary="The G-Stroke drawing algorithm versions and brushes a client can choose from",
+)
+def list_algorithms_endpoint():
+    """`default` is what a request gets when it does not choose. Send `algorithm` on /artist/draw or /artist/draw-from-image to pick one."""
+    from artist import ALGORITHMS, DEFAULT_ALGORITHM
+    from artist.gstroke import BRUSHES
+
+    return {
+        "default": DEFAULT_ALGORITHM,
+        "algorithms": [{"version": v, "description": d} for v, d in ALGORITHMS.items()],
+        "brushes_2_0": [{"name": b.name, "description": b.description} for b in BRUSHES.values()],
+    }
 
 
 @app.get(
